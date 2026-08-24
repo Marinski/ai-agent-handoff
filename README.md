@@ -26,13 +26,32 @@ This tool bridges that gap by extracting the substantive parts of a Claude Code 
 
 ```bash
 # Extract a Claude session and generate handoff
-claude-to-opencode-handoff <claude-session-id>
+ai-handoff <session-id>
 
 # Example:
-claude-to-opencode-handoff a2a7da54-aa52-4d66-a37b-f228e7399564
+ai-handoff a2a7da54-aa52-4d66-a37b-f228e7399564
+
+# Specify output directory:
+ai-handoff <session-id> /path/to/output
+
+# With source/target tool specification:
+ai-handoff <session-id> --to opencode --from claude
 ```
 
-Output: `CLAUDE_HANDOFF.md` in current directory
+**Output**: `ai-handoff-<session-id>.md` in the current directory (or specified path)
+
+## How it works
+
+1. Takes a Claude Code session ID as input
+2. Locates the session JSONL file in `~/.claude/projects/`
+3. Extracts user and assistant messages using jq filters
+4. Filters out Claude UI/tool noise (task notifications, local commands, metadata)
+5. Generates a structured markdown handoff file with:
+   - Session metadata and important instructions
+   - Original user context (last 12 messages)
+   - Previous agent's final state (last 250 lines of reasoning)
+   - Earlier checkpoints and completed work
+   - Continuation prompt for the new agent
 
 ## Extending for Other Tools
 
@@ -50,3 +69,11 @@ The script is designed to be extensible. To hand off to/from other AI tools:
 - [ ] JSON export format for programmatic use
 - [ ] CLI flags for specifying session locations
 - [ ] Integration with multiple AI assistant platforms
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on contributing to this project.
+
+## License
+
+MIT License - see [LICENSE](LICENSE) for details.
