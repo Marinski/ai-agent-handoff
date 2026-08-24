@@ -2,61 +2,99 @@
 set -euo pipefail
 
 # ai-agent-handoff
-# Transfers conversation context between AI agents/tools
-# Usage: ai-handoff <session-id> [--to <target-tool>] [--from <source-tool>]
+# Transfers conversation context between AI agents/tools.
+#
+# This script only parses arguments, dispatches to the source tool's
+# backend, and renders the handoff markdown. Session lookup/extraction is
+# tool-specific and lives in tools/<tool>.sh, one file per supported tool.
+# Each backend defines two functions:
+#
+#   <tool>_locate  <session-id>
+#       Prints a human-readable session location and returns 0, or
+#       returns 1 if the session cannot be found.
+#
+#   <tool>_extract <session-id> <location> <user-out-file> <assistant-out-file>
+#       Writes plain-text user messages to <user-out-file> and filtered
+#       plain-text assistant messages to <assistant-out-file>.
+#
+# Usage: ai-handoff <session-id> [--from <source-tool>] [--to <target-tool>] [--out <dir>]
 
-SESSION_ID="${1:-}"
-TARGET_TOOL="${2:-opencode}"
-SOURCE_TOOL="${3:-claude}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOOLS_DIR="$SCRIPT_DIR/tools"
+
+available_tools() {
+    local f names=()
+    for f in "$TOOLS_DIR"/*.sh; do
+        [[ -e "$f" ]] && names+=("$(basename "$f" .sh)")
+    done
+    (IFS=,; echo "${names[*]}")
+}
+
+usage() {
+    cat <<USAGE
+Usage:
+  ai-handoff <session-id> [--from <source-tool>] [--to <target-tool>] [--out <dir>]
+  ai-handoff <session-id> <output-dir>
+
+Example:
+  ai-handoff a2a7da54-aa52-4d66-a37b-f228e7399564 --from claude --to opencode
+
+Available tools: $(available_tools)
+USAGE
+}
+
+SOURCE_TOOL="claude"
+TARGET_TOOL="opencode"
+OUTPUT_DIR="$PWD"
+POSITIONAL=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --from) SOURCE_TOOL="${2:?--from needs a value}"; shift 2 ;;
+        --to)   TARGET_TOOL="${2:?--to needs a value}"; shift 2 ;;
+        --out)  OUTPUT_DIR="${2:?--out needs a value}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        --*) echo "Unknown flag: $1" >&2; usage; exit 1 ;;
+        *) POSITIONAL+=("$1"); shift ;;
+    esac
+done
+
+SESSION_ID="${POSITIONAL[0]:-}"
+[[ ${#POSITIONAL[@]} -ge 2 ]] && OUTPUT_DIR="${POSITIONAL[1]}"
 
 if [[ -z "$SESSION_ID" ]]; then
-    echo "Usage:"
-    echo "  ai-handoff <session-id> [--to <target-tool>] [--from <source-tool>]"
-    echo
-    echo "Example:"
-    echo "  ai-handoff a2a7da54-aa52-4d66-a37b-f228e7399564 --to opencode --from claude"
+    usage
     exit 1
 fi
 
-# Determine session file location based on source tool
-case "$SOURCE_TOOL" in
-    claude)
-        SESSION_FILE="$(find "$HOME/.claude/projects" \
-            -type f \
-            -name "${SESSION_ID}.jsonl" \
-            -print -quit)"
-        ;;
-    encode)
-        # OpenCode session format would be specified here
-        SESSION_FILE="$(find "$HOME/.opencode/sessions" \
-            -type f \
-            -name "${SESSION_ID}.jsonl" \
-            -print -quit)"
-        ;;
-    *)
-        echo "Unsupported source tool: $SOURCE_TOOL"
-        echo "Supported: claude, encode (opencode)"
-        exit 1
-        ;;
-esac
+SOURCE_SCRIPT="$TOOLS_DIR/${SOURCE_TOOL}.sh"
+if [[ ! -f "$SOURCE_SCRIPT" ]]; then
+    echo "Unsupported source tool: $SOURCE_TOOL" >&2
+    echo "Available: $(available_tools)" >&2
+    exit 1
+fi
+# shellcheck source=/dev/null
+source "$SOURCE_SCRIPT"
 
-if [[ -z "$SESSION_FILE" ]]; then
-    echo "ERROR: Session not found:"
-    echo "  $SESSION_ID (source: $SOURCE_TOOL)"
+LOCATE_FN="${SOURCE_TOOL}_locate"
+EXTRACT_FN="${SOURCE_TOOL}_extract"
+if ! declare -F "$LOCATE_FN" >/dev/null || ! declare -F "$EXTRACT_FN" >/dev/null; then
+    echo "tools/${SOURCE_TOOL}.sh must define ${LOCATE_FN}() and ${EXTRACT_FN}()" >&2
     exit 1
 fi
 
-# Determine output directory and filename
-OUTPUT_DIR="${4:-$PWD}"
+if ! SESSION_LOCATION="$("$LOCATE_FN" "$SESSION_ID")"; then
+    echo "ERROR: Session not found:" >&2
+    echo "  $SESSION_ID (source: $SOURCE_TOOL)" >&2
+    exit 1
+fi
+
+mkdir -p "$OUTPUT_DIR"
 HANDOFF="$OUTPUT_DIR/ai-handoff-${SESSION_ID}.md"
 
-RAW_TMP="$(mktemp)"
 USER_TMP="$(mktemp)"
 ASSISTANT_TMP="$(mktemp)"
-
-cleanup() {
-    rm -f "$RAW_TMP" "$USER_TMP" "$ASSISTANT_TMP" 2>/dev/null || true
-}
+cleanup() { rm -f "$USER_TMP" "$ASSISTANT_TMP" 2>/dev/null || true; }
 trap cleanup EXIT
 
 echo "Session:"
@@ -64,64 +102,11 @@ echo "  ID: $SESSION_ID"
 echo "  Source: $SOURCE_TOOL"
 echo "  Target: $TARGET_TOOL"
 echo
-echo "Source file:"
-echo "  $SESSION_FILE"
+echo "Source location:"
+echo "  $SESSION_LOCATION"
 echo
 
-# ---------------------------------------------------------------------------
-# Extract textual user messages.
-# ---------------------------------------------------------------------------
-
-jq -r '
-    select(.type=="user")
-    | .message.content
-    | if type=="string" then .
-      elif type=="array" then
-          .[]?
-          | select(.type=="text")
-          | .text
-      else empty
-      end
-' "$SESSION_FILE" > "$USER_TMP"
-
-# ---------------------------------------------------------------------------
-# Extract textual assistant messages.
-#
-# Ignore common Claude UI/tool noise.
-#---------------------------------------------------------------------------
-
-jq -r '
-    select(.type=="assistant")
-    | .message.content
-    | if type=="string" then .
-      elif type=="array" then
-          .[]?
-          | select(.type=="text")
-          | .text
-      else empty
-      end
-' "$SESSION_FILE" |
-sed \
-    -e '/^<task-notification>/,/^<\/task-notification>$/d' \
-    -e '/^<local-command-caveat>/d' \
-    -e '/^<\/local-command-caveat>/d' \
-    -e '/^<command-name>/d' \
-    -e '/^<\/command-name>/d' \
-    -e '/^<command-message>/d' \
-    -e '/^<\/command-message>/d' \
-    -e '/^<command-args>/d' \
-    -e '/^<\/command-args>/d' \
-    -e '/^<local-command-stdout>/d' \
-    -e '/^<\/local-command-stdout>/d' \
-    -e '/^<tool-use-id>/d' \
-    -e '/^<\/tool-use-id>/d' \
-    -e '/^<task-id>/d' \
-    -e '/^<\/task-id>/d' \
-    -e '/^<output-file>/d' \
-    -e '/^<\/output-file>/d' \
-    -e '/^<status>/d' \
-    -e '/^<\/status>/d' \
-    > "$ASSISTANT_TMP"
+"$EXTRACT_FN" "$SESSION_ID" "$SESSION_LOCATION" "$USER_TMP" "$ASSISTANT_TMP"
 
 # ---------------------------------------------------------------------------
 # Create compact handoff.
@@ -141,7 +126,7 @@ Source: $SOURCE_TOOL
 
 Target: $TARGET_TOOL
 
-Original session file: \`$SESSION_FILE\`
+Original session location: \`$SESSION_LOCATION\`
 
 Current project: \`$PWD\`
 
@@ -182,11 +167,7 @@ The following are the substantive user messages from the session.
 
 HEADER
 
-    # Keep user messages, but remove obvious local command noise.
-    sed \
-        -e '/^monster@.*[$#]$/d' \
-        -e '/^local-command/d' \
-        "$USER_TMP"
+    cat "$USER_TMP"
 
     cat <<'SECTION'
 
@@ -268,7 +249,7 @@ echo "  Source: $SOURCE_TOOL"
 echo "  Target: $TARGET_TOOL"
 echo
 echo "Source:"
-echo "  $SESSION_FILE"
+echo "  $SESSION_LOCATION"
 echo
 echo "Handoff:"
 echo "  $HANDOFF"
@@ -282,7 +263,7 @@ echo
 echo "Next:"
 echo "  $TARGET_TOOL"
 echo
-echo "OpenCode first prompt:"
+echo "$TARGET_TOOL first prompt:"
 echo
 echo "  Read the handoff file completely."
 echo "  Verify the current system state against it."
