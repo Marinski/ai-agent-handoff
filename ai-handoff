@@ -1,0 +1,290 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ai-agent-handoff
+# Transfers conversation context between AI agents/tools
+# Usage: ai-handoff <session-id> [--to <target-tool>] [--from <source-tool>]
+
+SESSION_ID="${1:-}"
+TARGET_TOOL="${2:-opencode}"
+SOURCE_TOOL="${3:-claude}"
+
+if [[ -z "$SESSION_ID" ]]; then
+    echo "Usage:"
+    echo "  ai-handoff <session-id> [--to <target-tool>] [--from <source-tool>]"
+    echo
+    echo "Example:"
+    echo "  ai-handoff a2a7da54-aa52-4d66-a37b-f228e7399564 --to opencode --from claude"
+    exit 1
+fi
+
+# Determine session file location based on source tool
+case "$SOURCE_TOOL" in
+    claude)
+        SESSION_FILE="$(find "$HOME/.claude/projects" \
+            -type f \
+            -name "${SESSION_ID}.jsonl" \
+            -print -quit)"
+        ;;
+    encode)
+        # OpenCode session format would be specified here
+        SESSION_FILE="$(find "$HOME/.opencode/sessions" \
+            -type f \
+            -name "${SESSION_ID}.jsonl" \
+            -print -quit)"
+        ;;
+    *)
+        echo "Unsupported source tool: $SOURCE_TOOL"
+        echo "Supported: claude, encode (opencode)"
+        exit 1
+        ;;
+esac
+
+if [[ -z "$SESSION_FILE" ]]; then
+    echo "ERROR: Session not found:"
+    echo "  $SESSION_ID (source: $SOURCE_TOOL)"
+    exit 1
+fi
+
+# Determine output directory and filename
+OUTPUT_DIR="${4:-$PWD}"
+HANDOFF="$OUTPUT_DIR/ai-handoff-${SESSION_ID}.md"
+
+RAW_TMP="$(mktemp)"
+USER_TMP="$(mktemp)"
+ASSISTANT_TMP="$(mktemp)"
+
+cleanup() {
+    rm -f "$RAW_TMP" "$USER_TMP" "$ASSISTANT_TMP" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+echo "Session:"
+echo "  ID: $SESSION_ID"
+echo "  Source: $SOURCE_TOOL"
+echo "  Target: $TARGET_TOOL"
+echo
+echo "Source file:"
+echo "  $SESSION_FILE"
+echo
+
+# ---------------------------------------------------------------------------
+# Extract textual user messages.
+# ---------------------------------------------------------------------------
+
+jq -r '
+    select(.type=="user")
+    | .message.content
+    | if type=="string" then .
+      elif type=="array" then
+          .[]?
+          | select(.type=="text")
+          | .text
+      else empty
+      end
+' "$SESSION_FILE" > "$USER_TMP"
+
+# ---------------------------------------------------------------------------
+# Extract textual assistant messages.
+#
+# Ignore common Claude UI/tool noise.
+#---------------------------------------------------------------------------
+
+jq -r '
+    select(.type=="assistant")
+    | .message.content
+    | if type=="string" then .
+      elif type=="array" then
+          .[]?
+          | select(.type=="text")
+          | .text
+      else empty
+      end
+' "$SESSION_FILE" |
+sed \
+    -e '/^<task-notification>/,/^<\/task-notification>$/d' \
+    -e '/^<local-command-caveat>/d' \
+    -e '/^<\/local-command-caveat>/d' \
+    -e '/^<command-name>/d' \
+    -e '/^<\/command-name>/d' \
+    -e '/^<command-message>/d' \
+    -e '/^<\/command-message>/d' \
+    -e '/^<command-args>/d' \
+    -e '/^<\/command-args>/d' \
+    -e '/^<local-command-stdout>/d' \
+    -e '/^<\/local-command-stdout>/d' \
+    -e '/^<tool-use-id>/d' \
+    -e '/^<\/tool-use-id>/d' \
+    -e '/^<task-id>/d' \
+    -e '/^<\/task-id>/d' \
+    -e '/^<output-file>/d' \
+    -e '/^<\/output-file>/d' \
+    -e '/^<status>/d' \
+    -e '/^<\/status>/d' \
+    > "$ASSISTANT_TMP"
+
+# ---------------------------------------------------------------------------
+# Create compact handoff.
+#---------------------------------------------------------------------------
+
+{
+    cat <<HEADER
+# ai-agent-handoff
+
+Generated: $(date -Is)
+
+## Session
+
+Session ID: \`$SESSION_ID\`
+
+Source: $SOURCE_TOOL
+
+Target: $TARGET_TOOL
+
+Original session file: \`$SESSION_FILE\`
+
+Current project: \`$PWD\`
+
+---
+
+# IMPORTANT INSTRUCTIONS FOR $TARGET_TOOL
+
+This is a continuation of a $SOURCE_TOOL session.
+
+The information below is historical context. The current machine,
+repository, services, database and deployment state are authoritative.
+
+Before changing anything:
+
+1. Inspect the current git status.
+2. Inspect the current repository.
+3. Inspect running services/processes.
+4. Inspect the current deployment state.
+5. Inspect relevant database/task state.
+6. Verify the important claims in this handoff.
+7. Determine what is actually unfinished.
+
+For production or expensive operations:
+
+- use controlled batches
+- monitor memory/CPU
+- preserve rollback options
+- don't delete production data
+- don't launch huge jobs blindly
+- verify every batch
+- don't assume historical results are still current
+
+---
+
+# ORIGINAL USER CONTEXT
+
+The following are the substantive user messages from the session.
+
+HEADER
+
+    # Keep user messages, but remove obvious local command noise.
+    sed \
+        -e '/^monster@.*[$#]$/d' \
+        -e '/^local-command/d' \
+        "$USER_TMP"
+
+    cat <<'SECTION'
+
+---
+
+# IMPORTANT RECENT USER INSTRUCTIONS
+
+The final user messages are especially important because they usually
+describe what the agent was trying to accomplish when the session ended.
+
+SECTION
+
+    # Last 12 user messages.
+    tail -n 120 "$USER_TMP"
+
+    cat <<'SECTION'
+
+---
+
+# PREVIOUS AGENT — FINAL STATE
+
+The following is the final portion of the previous agent's textual reasoning.
+This is the most important section for continuing the work.
+
+SECTION
+
+    # Last 250 lines of meaningful assistant output.
+    tail -n 250 "$ASSISTANT_TMP"
+
+    cat <<'SECTION'
+
+---
+
+# PREVIOUS AGENT — EARLIER IMPORTANT CHECKPOINTS
+
+Search the handoff above for completed work, fixes, bugs, verification results,
+remaining blockers and explicit "open items".
+
+Do not assume an item is still open if the current system shows it was already
+completed.
+
+---
+
+# CONTINUATION PROMPT
+
+Read this handoff completely.
+
+Then inspect the ACTUAL current state before making changes.
+
+Report concisely:
+
+1. What the previous agent completed
+2. What the current system shows is actually complete
+3. What remains unfinished
+4. What is blocking the remaining work
+5. The safest next action
+6. A safe batch size for any expensive operation
+
+Then continue the work.
+
+Do not restart completed work merely because it appears in the historical
+session.
+
+If a production-impacting or potentially destructive action is needed,
+inspect it first and explain the risk before executing it.
+
+SECTION
+
+} > "$HANDOFF"
+
+echo
+echo "========================================"
+echo " AI Agent Handoff created"
+echo "========================================"
+echo
+echo "Session:"
+echo "  ID: $SESSION_ID"
+echo "  Source: $SOURCE_TOOL"
+echo "  Target: $TARGET_TOOL"
+echo
+echo "Source:"
+echo "  $SESSION_FILE"
+echo
+echo "Handoff:"
+echo "  $HANDOFF"
+echo
+echo "Size:"
+du -h "$HANDOFF"
+echo
+echo "Lines:"
+wc -l "$HANDOFF"
+echo
+echo "Next:"
+echo "  $TARGET_TOOL"
+echo
+echo "OpenCode first prompt:"
+echo
+echo "  Read the handoff file completely."
+echo "  Verify the current system state against it."
+echo "  Do not blindly redo completed work."
+echo "  Report what is complete, what remains, blockers, and the safest next step."
