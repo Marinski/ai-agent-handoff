@@ -17,6 +17,7 @@ from.
 |----------|------------------------------------------------------------|
 | `claude` | JSONL files under `~/.claude/projects/**/<session-id>.jsonl` |
 | `opencode` | SQLite database at `~/.local/share/opencode/opencode.db` (`session`/`message`/`part` tables) |
+| `vscode` | SQLite database at `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db` (`sessions`/`turns` tables) — VS Code's native Chat panel, regardless of which model answered (GitHub Copilot, or a BYOK provider extension routed through the same store) |
 
 Handoffs work in either direction: `--from claude --to opencode` and
 `--from opencode --to claude` both work, since `--from` is what selects the
@@ -107,6 +108,7 @@ automatically once the file exists.
 
 - [x] Configurable source/target tool profiles (`tools/*.sh`)
 - [x] Support for OpenCode → Claude hand-offs
+- [x] Support for VS Code (GitHub Copilot Chat / BYOK Chat panel) sessions
 - [ ] JSON export format for programmatic use
 - [ ] Integration with additional AI assistant platforms (Cursor, Windsurf, ...)
 

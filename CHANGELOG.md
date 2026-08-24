@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `tools/vscode.sh`: a third backend reading VS Code's Chat panel sessions
+  from `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db`
+  (`sessions`/`turns` tables). Despite the extension id, this is the store
+  behind VS Code's native Chat UI for any provider routed through it (this
+  machine also has a LiteLLM BYOK chat extension using the same store), not
+  only GitHub-branded Copilot chats. `turns.user_message` /
+  `assistant_response` are already plain rendered text, so unlike the other
+  two backends this one needs no noise filtering.
 - OpenCode → Claude (and Claude → OpenCode) handoff, reading OpenCode's real
   session store: a SQLite database at `~/.local/share/opencode/opencode.db`
   (`session`/`message`/`part` tables), not JSONL files
