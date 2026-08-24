@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Working `--from <tool>`, `--to <tool>`, `--out <dir>` flags, plus `--help`
 
 ### Fixed
+- `ai-handoff` broke when installed as a symlink on `PATH` (the normal
+  install pattern): it located `tools/` relative to `${BASH_SOURCE[0]}`
+  without resolving the symlink first, so it looked for `tools/` next to
+  the symlink instead of next to the real script. Verified by symlinking
+  into `~/.local/bin` and running `ai-handoff` as a bare command.
 - `--to`/`--from` were documented in the README but never actually parsed —
   the script read them positionally (`$2`/`$3`), so
   `ai-handoff <id> --to opencode --from claude` silently set the target tool

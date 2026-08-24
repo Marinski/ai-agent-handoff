@@ -19,7 +19,20 @@ set -euo pipefail
 #
 # Usage: ai-handoff <session-id> [--from <source-tool>] [--to <target-tool>] [--out <dir>]
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve through symlinks (e.g. ~/.local/bin/ai-handoff -> this file) so
+# TOOLS_DIR points at the real repo, not wherever the symlink lives.
+resolve_script_dir() {
+    local source="${BASH_SOURCE[0]}"
+    while [[ -h "$source" ]]; do
+        local dir
+        dir="$(cd -P "$(dirname "$source")" && pwd)"
+        source="$(readlink "$source")"
+        [[ "$source" != /* ]] && source="$dir/$source"
+    done
+    cd -P "$(dirname "$source")" && pwd
+}
+
+SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
 
 available_tools() {

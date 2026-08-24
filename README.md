@@ -36,6 +36,18 @@ extraction backend — `--to` only labels the output for the next agent.
   - Continuation prompt for the new agent
 - **Preserves session state** across token limits and tool switches
 
+## Installation
+
+`ai-handoff` needs its `tools/` directory alongside it, so install it as a
+symlink into a directory on your `PATH` rather than copying just the script:
+
+```bash
+git clone https://github.com/Marinski/ai-agent-handoff.git
+mkdir -p ~/.local/bin
+ln -sf "$PWD/ai-agent-handoff/ai-handoff" ~/.local/bin/ai-handoff
+# ~/.local/bin must be on PATH
+```
+
 ## Usage
 
 ```bash
