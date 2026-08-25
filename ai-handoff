@@ -7,7 +7,7 @@ set -euo pipefail
 # This script only parses arguments, dispatches to the source tool's
 # backend, and renders the handoff markdown. Session lookup/extraction is
 # tool-specific and lives in tools/<tool>.sh, one file per supported tool.
-# Each backend defines two functions:
+# Each backend defines two required functions and one optional one:
 #
 #   <tool>_locate  <session-id>
 #       Prints a human-readable session location and returns 0, or
@@ -17,7 +17,15 @@ set -euo pipefail
 #       Writes plain-text user messages to <user-out-file> and filtered
 #       plain-text assistant messages to <assistant-out-file>.
 #
+#   <tool>_list [limit]                                          (optional)
+#       Prints up to <limit> recent sessions, most recent first, as
+#       tab-separated "<id>\t<label>" lines. Powers the guided picker
+#       below; a tool without it falls back to asking for an id directly.
+#
 # Usage: ai-handoff <session-id> [--from <source-tool>] [--to <target-tool>] [--out <dir>]
+#        ai-handoff [--from <source-tool>] [--to <target-tool>]
+#            omit the session id in a terminal and it walks you through
+#            picking a source tool, a session, and a target tool instead.
 
 # Resolve through symlinks (e.g. ~/.local/bin/ai-handoff -> this file) so
 # TOOLS_DIR points at the real repo, not wherever the symlink lives.
@@ -35,12 +43,100 @@ resolve_script_dir() {
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
 
-available_tools() {
-    local f names=()
+available_tools_arr() {
+    local f
     for f in "$TOOLS_DIR"/*.sh; do
-        [[ -e "$f" ]] && names+=("$(basename "$f" .sh)")
+        [[ -e "$f" ]] && basename "$f" .sh
     done
+}
+
+available_tools() {
+    local names=()
+    mapfile -t names < <(available_tools_arr)
     (IFS=,; echo "${names[*]}")
+}
+
+# Collapse whitespace/newlines to single spaces and cap length, so a
+# session label fits on one prompt line.
+sanitize_label() {
+    local s
+    s="$(printf '%s' "$1" | tr '\n\t' '  ' | sed -E 's/ +/ /g; s/^ //; s/ $//')"
+    if [[ ${#s} -gt 90 ]]; then
+        s="${s:0:87}..."
+    fi
+    printf '%s' "$s"
+}
+
+SESSION_LIST_LIMIT=15
+
+# Numbered picker over a fixed list of options; returns the chosen option
+# on stdout. Also accepts the option typed out directly, not just its number.
+prompt_choice() {
+    local prompt="$1"; shift
+    local -a opts=("$@")
+    local i choice
+    echo "$prompt" >&2
+    i=1
+    for o in "${opts[@]}"; do
+        printf '  %d) %s\n' "$i" "$o" >&2
+        ((i++))
+    done
+    while true; do
+        read -rp "> " choice || { echo "Aborted." >&2; exit 1; }
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#opts[@]} )); then
+            printf '%s\n' "${opts[$((choice-1))]}"
+            return 0
+        fi
+        for o in "${opts[@]}"; do
+            [[ "$choice" == "$o" ]] && { printf '%s\n' "$o"; return 0; }
+        done
+        echo "Enter a number from 1-${#opts[@]}, or the tool name." >&2
+    done
+}
+
+# Numbered picker over a source tool's recent sessions (via <tool>_list),
+# each line shown as "date — label", so you don't need to already know the
+# session id. Falls back to a plain prompt if the tool has no _list, or if
+# it returns nothing. Returns the chosen session id on stdout.
+prompt_session() {
+    local source_tool="$1"
+    local list_fn="${source_tool}_list"
+    local -a ids=() labels=()
+    local id label choice
+
+    if declare -F "$list_fn" >/dev/null; then
+        while IFS=$'\t' read -r id label; do
+            [[ -z "$id" ]] && continue
+            ids+=("$id")
+            labels+=("$(sanitize_label "$label")")
+        done < <("$list_fn" "$SESSION_LIST_LIMIT")
+    fi
+
+    if [[ ${#ids[@]} -eq 0 ]]; then
+        read -rp "No recent $source_tool sessions found. Enter a session ID: " choice || { echo "Aborted." >&2; exit 1; }
+        [[ -n "$choice" ]] || { echo "A session ID is required." >&2; exit 1; }
+        printf '%s\n' "$choice"
+        return 0
+    fi
+
+    echo "Which $source_tool session?" >&2
+    for i in "${!labels[@]}"; do
+        printf '  %d) %s (id: %s)\n' "$((i+1))" "${labels[$i]}" "${ids[$i]}" >&2
+    done
+    printf '  m) enter a session ID manually\n' >&2
+    while true; do
+        read -rp "> " choice || { echo "Aborted." >&2; exit 1; }
+        if [[ "$choice" == "m" ]]; then
+            read -rp "Session ID: " choice
+            [[ -n "$choice" ]] && { printf '%s\n' "$choice"; return 0; }
+            continue
+        fi
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#ids[@]} )); then
+            printf '%s\n' "${ids[$((choice-1))]}"
+            return 0
+        fi
+        echo "Enter a number from 1-${#ids[@]}, or 'm'." >&2
+    done
 }
 
 usage() {
@@ -48,9 +144,14 @@ usage() {
 Usage:
   ai-handoff <session-id> [--from <source-tool>] [--to <target-tool>] [--out <dir>]
   ai-handoff <session-id> <output-dir>
+  ai-handoff [--from <source-tool>] [--to <target-tool>]   (guided, in a terminal)
 
 Example:
   ai-handoff a2a7da54-aa52-4d66-a37b-f228e7399564 --from claude --to opencode
+
+Don't know the session id? Run it with no session id from a terminal and
+it'll ask which tool to migrate from, list that tool's recent sessions to
+pick from, then ask which tool to migrate to.
 
 Available tools: $(available_tools)
 USAGE
@@ -59,12 +160,14 @@ USAGE
 SOURCE_TOOL="claude"
 TARGET_TOOL="opencode"
 OUTPUT_DIR="$PWD"
+FROM_GIVEN=false
+TO_GIVEN=false
 POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --from) SOURCE_TOOL="${2:?--from needs a value}"; shift 2 ;;
-        --to)   TARGET_TOOL="${2:?--to needs a value}"; shift 2 ;;
+        --from) SOURCE_TOOL="${2:?--from needs a value}"; FROM_GIVEN=true; shift 2 ;;
+        --to)   TARGET_TOOL="${2:?--to needs a value}"; TO_GIVEN=true; shift 2 ;;
         --out)  OUTPUT_DIR="${2:?--out needs a value}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         --*) echo "Unknown flag: $1" >&2; usage; exit 1 ;;
@@ -75,9 +178,15 @@ done
 SESSION_ID="${POSITIONAL[0]:-}"
 [[ ${#POSITIONAL[@]} -ge 2 ]] && OUTPUT_DIR="${POSITIONAL[1]}"
 
-if [[ -z "$SESSION_ID" ]]; then
-    usage
-    exit 1
+# Guided mode: only kicks in when no session id was given at all, and only
+# in a real terminal — a script or pipe with a missing id still just fails
+# below rather than hanging on a prompt.
+GUIDED=false
+[[ -z "$SESSION_ID" && -t 0 && -t 1 ]] && GUIDED=true
+
+if $GUIDED && ! $FROM_GIVEN; then
+    mapfile -t AVAILABLE < <(available_tools_arr)
+    SOURCE_TOOL="$(prompt_choice "Migrate from which tool?" "${AVAILABLE[@]}")"
 fi
 
 SOURCE_SCRIPT="$TOOLS_DIR/${SOURCE_TOOL}.sh"
@@ -93,6 +202,20 @@ LOCATE_FN="${SOURCE_TOOL}_locate"
 EXTRACT_FN="${SOURCE_TOOL}_extract"
 if ! declare -F "$LOCATE_FN" >/dev/null || ! declare -F "$EXTRACT_FN" >/dev/null; then
     echo "tools/${SOURCE_TOOL}.sh must define ${LOCATE_FN}() and ${EXTRACT_FN}()" >&2
+    exit 1
+fi
+
+if $GUIDED; then
+    SESSION_ID="$(prompt_session "$SOURCE_TOOL")"
+    if ! $TO_GIVEN; then
+        mapfile -t AVAILABLE < <(available_tools_arr)
+        TARGET_TOOL="$(prompt_choice "Migrate to which tool?" "${AVAILABLE[@]}")"
+    fi
+    echo >&2
+fi
+
+if [[ -z "$SESSION_ID" ]]; then
+    usage
     exit 1
 fi
 

@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Guided mode: running `ai-handoff` with no session id from a terminal walks
+  through picking a source tool, a session from that tool's recent sessions
+  (numbered, dated, labeled with title/summary/first message — not just a
+  raw id), and a target tool, in that order. Any part already given via
+  `--from`/`--to` is skipped. Backed by a new optional `<tool>_list [limit]`
+  function in each backend (`claude_list`, `opencode_list`, `vscode_list`),
+  returning `id\tdate — label` lines; a tool without one falls back to
+  asking for an id directly. Only triggers when the session id is omitted
+  and stdin/stdout are both a tty — a script or pipe with a missing id still
+  just fails with the usage message, never hangs on a prompt.
+
+### Fixed
+- `tools/claude.sh`'s noise filter (task notifications, command echoes,
+  tool-call metadata) was only ever applied to assistant messages, never to
+  user messages — but task notifications and command echoes are recorded as
+  user-role turns too, so every Claude-sourced handoff's "ORIGINAL USER
+  CONTEXT" section carried this noise unfiltered. Found via the new
+  `claude_list`, whose session labels were literal tag soup
+  (`<command-message>model</command-message>`) instead of real text.
+  Two more bugs in the same filter, fixed alongside it: several tags
+  (`<command-message>`, `<command-args>`) are indented by Claude Code and the
+  `^<tag` anchors missed them; `<local-command-stdout>` can span many lines
+  (compaction hook output, JSON dumps) but was only ever deleted as two
+  independent single-line matches, leaking everything in between. The filter
+  is now one shared function (`claude_strip_noise`) applied identically to
+  both streams and to the list labels, so all three stay in sync.
 - `tools/vscode.sh`: a third backend reading VS Code's Chat panel sessions
   from `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db`
   (`sessions`/`turns` tables). Despite the extension id, this is the store

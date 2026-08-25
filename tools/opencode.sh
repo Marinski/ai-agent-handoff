@@ -82,3 +82,24 @@ with open(assistant_out, "w") as fh:
         fh.write("\n")
 PY
 }
+
+opencode_list() {
+    local limit="${1:-15}"
+    [[ -f "$OPENCODE_DB" ]] || return 1
+    python3 - "$OPENCODE_DB" "$limit" <<'PY'
+import sys, sqlite3, datetime
+
+db, limit = sys.argv[1], int(sys.argv[2])
+con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+rows = con.execute(
+    "SELECT id, title, slug, time_created FROM session ORDER BY time_created DESC LIMIT ?",
+    (limit,),
+).fetchall()
+con.close()
+
+for id_, title, slug, ts in rows:
+    when = datetime.datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d %H:%M") if ts else "?"
+    label = (title or slug or id_).replace("\t", " ").replace("\n", " ").strip()
+    print(f"{id_}\t{when} — {label}")
+PY
+}

@@ -69,6 +69,38 @@ ai-handoff ses_fcbbc786dffeRHepIt5tP1lDVH --from opencode --to claude
 
 **Output**: `ai-handoff-<session-id>.md` in the current directory (or specified path)
 
+### Don't know the session id?
+
+Run it with no session id from a terminal and it walks you through picking
+one — which tool to migrate *from*, a numbered list of that tool's recent
+sessions (dated, labeled with their title/summary/first message, not just a
+raw id) to migrate *to*:
+
+```
+$ ai-handoff
+Migrate from which tool?
+  1) claude
+  2) opencode
+  3) vscode
+> 3
+Which vscode session?
+  1) 2026-08-03 11:38 — Flip `VISION_ENABLED=true` so the planner "sees" ... (id: 875e11af-...)
+  2) 2026-07-30 21:50 — now we're talking, what model do you use (id: ddeda835-...)
+  m) enter a session ID manually
+> 2
+Migrate to which tool?
+  1) claude
+  2) opencode
+  3) vscode
+> 1
+```
+
+Any part already given on the command line (`--from`, `--to`) is skipped —
+e.g. `ai-handoff --from vscode` in a terminal only prompts for the session
+and the target. This only triggers when the session id is omitted *and*
+you're in a real terminal; a script or pipe with a missing id still just
+fails with the usage message instead of hanging on a prompt.
+
 ## How it works
 
 1. Takes a session ID and a `--from <tool>` (default `claude`)
@@ -86,7 +118,8 @@ ai-handoff ses_fcbbc786dffeRHepIt5tP1lDVH --from opencode --to claude
 ## Adding a new tool
 
 Each tool is one file in `tools/`, e.g. `tools/cursor.sh`, defining two
-functions (see `tools/claude.sh` and `tools/opencode.sh` for real examples):
+required functions and one optional one (see `tools/claude.sh` and
+`tools/opencode.sh` for real examples):
 
 ```bash
 cursor_locate() {
@@ -99,6 +132,14 @@ cursor_extract() {
     # write plain-text user messages to $user_out
     # write filtered plain-text assistant messages to $assistant_out
 }
+
+# optional — powers the guided session picker; without it, guided mode
+# just asks for a session id directly for this tool.
+cursor_list() {
+    local limit="${1:-15}"
+    # print up to $limit recent sessions, most recent first, as
+    # "<id>\t<date> — <label>" lines
+}
 ```
 
 No changes to `ai-handoff` itself are needed — `--from cursor` picks it up
@@ -109,6 +150,7 @@ automatically once the file exists.
 - [x] Configurable source/target tool profiles (`tools/*.sh`)
 - [x] Support for OpenCode → Claude hand-offs
 - [x] Support for VS Code (GitHub Copilot Chat / BYOK Chat panel) sessions
+- [x] Guided picker — no need to already know the session id
 - [ ] JSON export format for programmatic use
 - [ ] Integration with additional AI assistant platforms (Cursor, Windsurf, ...)
 

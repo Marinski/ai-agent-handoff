@@ -66,3 +66,24 @@ with open(assistant_out, "w") as fh:
         fh.write("\n")
 PY
 }
+
+vscode_list() {
+    local limit="${1:-15}"
+    [[ -f "$VSCODE_CHAT_DB" ]] || return 1
+    python3 - "$VSCODE_CHAT_DB" "$limit" <<'PY'
+import sys, sqlite3
+
+db, limit = sys.argv[1], int(sys.argv[2])
+con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+rows = con.execute(
+    "SELECT id, summary, updated_at FROM sessions ORDER BY updated_at DESC LIMIT ?",
+    (limit,),
+).fetchall()
+con.close()
+
+for id_, summary, updated_at in rows:
+    when = (updated_at or "?")[:16].replace("T", " ")
+    label = (summary or id_).replace("\t", " ").replace("\n", " ").strip()
+    print(f"{id_}\t{when} — {label}")
+PY
+}
