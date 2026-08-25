@@ -226,6 +226,9 @@ if ! SESSION_LOCATION="$("$LOCATE_FN" "$SESSION_ID")"; then
 fi
 
 mkdir -p "$OUTPUT_DIR"
+# Absolute, so the path in the "first prompt" block below is safe to
+# copy-paste into the target tool regardless of its own working directory.
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 HANDOFF="$OUTPUT_DIR/ai-handoff-${SESSION_ID}.md"
 
 USER_TMP="$(mktemp)"
@@ -399,9 +402,9 @@ echo
 echo "Next:"
 echo "  $TARGET_TOOL"
 echo
-echo "$TARGET_TOOL first prompt:"
+echo "$TARGET_TOOL first prompt (copy-paste this):"
 echo
-echo "  Read the handoff file completely."
+echo "  Read the handoff file at $HANDOFF completely."
 echo "  Verify the current system state against it."
 echo "  Do not blindly redo completed work."
 echo "  Report what is complete, what remains, blockers, and the safest next step."

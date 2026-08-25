@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The closing "first prompt" block now includes the handoff file's absolute
+  path, so it's directly copy-pasteable into the target tool without also
+  having to scroll up and copy the path from the "Handoff:" line separately.
+  `OUTPUT_DIR` is resolved to an absolute path right after `mkdir -p`, so
+  this is correct even when `--out` was a relative path.
+
 ### Added
 - Guided mode: running `ai-handoff` with no session id from a terminal walks
   through picking a source tool, a session from that tool's recent sessions
