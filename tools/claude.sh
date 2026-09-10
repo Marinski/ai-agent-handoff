@@ -7,13 +7,15 @@
 
 claude_locate() {
     local session_id="$1"
+    local target="${session_id}.jsonl"
     local file
-    file="$(find "$HOME/.claude/projects" \
-        -type f \
-        -name "${session_id}.jsonl" \
-        -print -quit)"
-    [[ -n "$file" ]] || return 1
-    printf '%s\n' "$file"
+    while IFS= read -r file; do
+        [[ "$(basename "$file")" == "$target" ]] && {
+            printf '%s\n' "$file"
+            return 0
+        }
+    done < <(find "$HOME/.claude/projects" -type f -name '*.jsonl')
+    return 1
 }
 
 # Claude Code UI/tool noise, filtered from stdin to stdout: task
