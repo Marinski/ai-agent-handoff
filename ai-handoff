@@ -42,6 +42,8 @@ resolve_script_dir() {
 
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
+# Shared validation helper for session IDs.
+source "$TOOLS_DIR/validate.sh"
 
 available_tools_arr() {
     local f
@@ -176,6 +178,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 SESSION_ID="${POSITIONAL[0]:-}"
+validate_session_id "$SESSION_ID"
 [[ ${#POSITIONAL[@]} -ge 2 ]] && OUTPUT_DIR="${POSITIONAL[1]}"
 
 # Guided mode: only kicks in when no session id was given at all, and only
@@ -207,6 +210,7 @@ fi
 
 if $GUIDED; then
     SESSION_ID="$(prompt_session "$SOURCE_TOOL")"
+    validate_session_id "$SESSION_ID"
     if ! $TO_GIVEN; then
         mapfile -t AVAILABLE < <(available_tools_arr)
         TARGET_TOOL="$(prompt_choice "Migrate to which tool?" "${AVAILABLE[@]}")"
