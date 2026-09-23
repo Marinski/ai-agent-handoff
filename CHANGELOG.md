@@ -79,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   or unexpected characters (e.g. `/`, `..`) before it is interpolated into the
   backend script path. Invalid values now fail with a clear error instead of
   being used to build filesystem paths.
+- Extraction scratch files no longer land directly in the shared,
+  world-writable temp namespace. `ai-handoff` now creates a private,
+  user-only scratch directory (mode 0700 under `$TMPDIR` or `/tmp`), points
+  `TMPDIR` at it, and creates `USER_TMP`/`ASSISTANT_TMP` inside it, so raw
+  session text stays unreadable to other local users regardless of umask and
+  is removed wholesale on exit.
 
 ### Added (carried over from initial release)
 - User message extraction from Claude JSONL sessions

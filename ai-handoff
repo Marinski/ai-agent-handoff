@@ -254,9 +254,17 @@ mkdir -p "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 HANDOFF="$OUTPUT_DIR/ai-handoff-${SESSION_ID}.md"
 
+# Raw session text is written to the extraction scratch files, so they must
+# not land in the shared, world-writable temp namespace (a hostile or loose
+# umask could make conversation contents visible to other local users).
+# Create a private, user-only scratch directory and point TMPDIR at it, so
+# these files — and any mktemp the backends run — resolve inside a 0700 dir.
+PRIVATE_TMP="$(mktemp -d "${TMPDIR:-/tmp}/ai-handoff.XXXXXX")"
+chmod 700 "$PRIVATE_TMP"
+export TMPDIR="$PRIVATE_TMP"
 USER_TMP="$(mktemp)"
 ASSISTANT_TMP="$(mktemp)"
-cleanup() { rm -f "$USER_TMP" "$ASSISTANT_TMP" 2>/dev/null || true; }
+cleanup() { rm -rf "$PRIVATE_TMP" 2>/dev/null || true; }
 trap cleanup EXIT
 
 echo "Session:"
