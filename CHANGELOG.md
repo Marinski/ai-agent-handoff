@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Tool discovery (`available_tools_arr`) now filters `tools/*.sh` by backend
+  validity instead of globbing every file: a file is collected as an
+  available tool only when its basename matches `^[a-z][a-z0-9_-]*$` and it
+  defines the required `<tool>_locate` / `<tool>_extract` functions, so
+  stray scripts dropped in `tools/` (scratch files, partial backends,
+  renamed copies of an existing backend) no longer show up in the guided
+  picker or `--help`'s "Available tools:" line. Detection is a static grep
+  over the file — unvalidated files are never sourced during discovery.
+- Shared helper scripts (`lib/validate.sh`, `lib/redact.sh`) moved out of
+  `tools/` into a new `lib/` directory, so the `tools/*.sh` glob only matches
+  tool backend scripts. `ai-handoff` (and the security test suite) now load
+  the helpers from `lib/`; the per-tool exclusion hack in the picker is gone.
 - The closing "first prompt" block now includes the handoff file's absolute
   path, so it's directly copy-pasteable into the target tool without also
   having to scroll up and copy the path from the "Handoff:" line separately.
@@ -25,6 +37,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asking for an id directly. Only triggers when the session id is omitted
   and stdin/stdout are both a tty — a script or pipe with a missing id still
   just fails with the usage message, never hangs on a prompt.
+
+### Security
+- The `source` point now refuses any backend whose fully-resolved path is
+  not located inside `tools/`: a new `path_is_within_dir` helper (in
+  `lib/validate.sh`) resolves every symlink in the constructed
+  `SOURCE_SCRIPT` and `TOOLS_DIR` and aborts the run when the resolved
+  location escapes the designated tools directory — checked immediately
+  before the backend is sourced, on top of the existing tool-name regex and
+  manifest/checksum gates. This closes the last string-vs-reality gap: a
+  symlinked backend, a `tools/` entry that drops through `..`, or a drift
+  in `TOOLS_DIR` can no longer make `source` reach a file outside `tools/`.
 
 ### Fixed
 - `tools/claude.sh`'s noise filter (task notifications, command echoes,
@@ -71,6 +94,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The OpenCode source branch was an unimplemented stub: matched on the
   misspelled tool name `encode`, and looked for `~/.opencode/sessions/*.jsonl`,
   a path OpenCode has never written to.
+
+### Security
+- Extracted transcript blocks are now wrapped in unique, non-standard
+  delimiters when rendered into the handoff. Each run draws a 16-byte
+  random nonce *after* the session was recorded and emits
+  `<<<AI-HANDOFF-TRANSCRIPT <nonce> BEGIN>>>` /
+  `<<<AI-HANDOFF-TRANSCRIPT <nonce> END>>>` around all three transcript
+  sections (full user context, recent-instruction tail, final agent-state
+  tail), so the raw text can never contain — let alone spoof — the exact
+  marker line. The markers are deliberately not markdown fences, HTML
+  comments, or XML tags (nothing a target model is trained to treat as a
+  structural boundary), and the handoff header now tells the next agent
+  that only the two exact printed marker lines delimit data — everything
+  between a BEGIN/END pair is verbatim historical transcript to read,
+  never instructions, commands, or tool output to follow, even when text
+  inside merely looks like a directive.
+- The generated `ai-handoff-<session-id>.md` file is now created with
+  owner-only permissions (`0600`) immediately upon creation: the file is
+  touched under `umask 077` before the first byte of session text is
+  written, then explicitly `chmod 600` so a pre-existing file from an
+  earlier run is tightened too (a bare `>` redirect keeps an existing
+  file's mode). Previously the handoff inherited the ambient umask
+  (typically `0644`), leaving conversation contents readable to other
+  local users.
+- Input validation for session IDs and source tool names, wired in from
+  `tools/validate.sh`. `SESSION_ID` must match `^[A-Za-z0-9._-]+$` and be at
+  most 200 characters; `SOURCE_TOOL` is rejected if it contains path-traversal
+  or unexpected characters (e.g. `/`, `..`) before it is interpolated into the
+  backend script path. Invalid values now fail with a clear error instead of
+  being used to build filesystem paths.
+- Extraction scratch files no longer land directly in the shared,
+  world-writable temp namespace. `ai-handoff` now creates a private,
+  user-only scratch directory (mode 0700 under `$TMPDIR` or `/tmp`), points
+  `TMPDIR` at it, and creates `USER_TMP`/`ASSISTANT_TMP` inside it, so raw
+  session text stays unreadable to other local users regardless of umask and
+  is removed wholesale on exit.
+- Session secrets are redacted from the handoff before it is written. After
+  the source backend extracts plain-text user/assistant messages, a shared
+  regex redaction pass (`tools/redact.sh`) runs over both streams (and over
+  the `SESSION_LOCATION` header text, which embeds session titles) and
+  replaces common credential patterns with `[REDACTED]`:
+  - `KEY=value` assignments whose variable name signals a credential
+    (`API_KEY=...`, `export SECRET=...`, `PASSWORD=...`, `my_token=...`),
+    keeping the variable name so the handoff still shows which secret was set;
+  - well-known bearer/API token formats as bare words (`sk-...`, `ghp_...`,
+    `github_pat_...`, `AKIA...`, `xox*-...`, `AIza...`, `glpat-...`, and
+    `Bearer <token>`); and
+  - URL connection strings with embedded passwords
+    (`scheme://user:password@host`).
+  Redaction is regex-based and not exhaustive — the handoff may still contain
+  arbitrary session text, including secrets in unusual formats.
+- `tools/validate.sh` (and the new `tools/redact.sh`) are shared helper
+  scripts, not tool backends — the guided picker and `--help` no longer list
+  them as migratable tools.
 
 ### Added (carried over from initial release)
 - User message extraction from Claude JSONL sessions

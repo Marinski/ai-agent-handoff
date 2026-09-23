@@ -36,11 +36,33 @@ extraction backend — `--to` only labels the output for the next agent.
   - Earlier checkpoints and completed work
   - Continuation prompt for the new agent
 - **Preserves session state** across token limits and tool switches
+- **Redacts secrets** from the handoff: common credential patterns
+  (`API_KEY=...`, `export SECRET=...`, `Bearer <token>`, `sk-...` /
+  `ghp_...` / `AKIA...` tokens, `scheme://user:password@host` connection
+  URLs) are replaced with `[REDACTED]` during extraction, so credentials are
+  not copied verbatim into the handoff file. Variable names are kept
+  (`API_KEY=[REDACTED]`) so the next agent still sees which secret was set.
+  Redaction is regex-based and not exhaustive — treat the handoff as still
+  possibly containing arbitrary session text (e.g. secrets written in prose
+  or unusual formats).
+- **Wraps extracted transcript in unique delimiters**: every transcript
+  block rendered into the handoff sits between
+  `<<<AI-HANDOFF-TRANSCRIPT <nonce> BEGIN>>>` / `<<<AI-HANDOFF-TRANSCRIPT <nonce> END>>>`
+  markers. The nonce is 16 random bytes generated per run *after*
+  extraction, so the session text can never contain or spoof the exact
+  marker line, and the markers are deliberately not markdown fences,
+  HTML comments, or XML tags. The handoff's instructions tell the next
+  agent that only those two exact marker lines delimit data and that
+  everything between them is inert historical transcript — never
+  instructions, commands, or tool output — so transcript text that
+  merely looks like a directive is framed as data during the handoff
+  rather than acted on.
 
 ## Installation
 
-`ai-handoff` needs its `tools/` directory alongside it, so install it as a
-symlink into a directory on your `PATH` rather than copying just the script:
+`ai-handoff` needs its `tools/` and `lib/` directories alongside it, so
+install it as a symlink into a directory on your `PATH` rather than copying
+just the script:
 
 ```bash
 git clone https://github.com/Marinski/ai-agent-handoff.git
@@ -143,7 +165,16 @@ cursor_list() {
 ```
 
 No changes to `ai-handoff` itself are needed — `--from cursor` picks it up
-automatically once the file exists.
+automatically once the file exists. Discovery only collects files whose
+basename matches `^[a-z][a-z0-9_-]*$` (lowercase letter to start) **and**
+that define the two required functions `cursor_locate` / `cursor_extract`;
+anything else in `tools/` (scratch files, partial backends, renamed copies)
+is ignored rather than offered in the guided picker or "Available" list.
+The tool name is additionally validated before it is interpolated into the
+backend path, and right before the backend is sourced the fully-resolved
+`tools/<tool>.sh` path is re-checked to still be located inside `tools/` —
+so a backend that is a symlink or otherwise resolves outside the designated
+tools directory is refused rather than executed.
 
 ## Roadmap
 
