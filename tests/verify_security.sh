@@ -274,6 +274,24 @@ probe_mode() {
 }
 PROBE
 
+# Register the probe backend in the sandbox manifest — the same documented
+# route a real custom backend must take — or the integrity gate refuses to
+# source it and the probe could never run to inspect scratch-file modes.
+# Same sha256sum/shasum fallback as the binary.
+if command -v sha256sum >/dev/null 2>&1; then
+    PROBE_HASH="$(sha256sum "$PROBE_TREE/tools/securityprobe.sh" | cut -d' ' -f1)"
+elif command -v shasum >/dev/null 2>&1; then
+    PROBE_HASH="$(shasum -a 256 "$PROBE_TREE/tools/securityprobe.sh" | cut -d' ' -f1)"
+else
+    PROBE_HASH=""
+fi
+if [[ -z "$PROBE_HASH" ]]; then
+    echo "verify_security: need sha256sum or shasum to register the section-4 probe backend" >&2
+    FAILURES=$((FAILURES + 1))
+else
+    printf '%s  securityprobe.sh\n' "$PROBE_HASH" >> "$PROBE_TREE/tools/SHA256SUMS"
+fi
+
 if env HOME="$FAKE_HOME" TMPDIR="$TEST_TMP" PROBE_REPORT="$PROBE_REPORT" \
         bash "$PROBE_TREE/ai-handoff" 'probe-session' "$PROBE_OUT" \
         --from securityprobe --to claude >/dev/null 2>&1; then
@@ -286,13 +304,13 @@ fi
 check 'scratch files live under the private TMPDIR' \
     grep -Fq "TMPDIR=$TEST_TMP/ai-handoff." "$PROBE_REPORT"
 check 'user scratch dir is private (0700)' \
-    grep -Fq '^USER_DIR_MODE=700$' "$PROBE_REPORT"
+    grep -Eq '^USER_DIR_MODE=700$' "$PROBE_REPORT"
 check 'assistant scratch dir is private (0700)' \
-    grep -Fq '^ASSISTANT_DIR_MODE=700$' "$PROBE_REPORT"
+    grep -Eq '^ASSISTANT_DIR_MODE=700$' "$PROBE_REPORT"
 check 'user scratch file is owner-only (0600)' \
-    grep -Fq '^USER_FILE_MODE=600$' "$PROBE_REPORT"
+    grep -Eq '^USER_FILE_MODE=600$' "$PROBE_REPORT"
 check 'assistant scratch file is owner-only (0600)' \
-    grep -Fq '^ASSISTANT_FILE_MODE=600$' "$PROBE_REPORT"
+    grep -Eq '^ASSISTANT_FILE_MODE=600$' "$PROBE_REPORT"
 check 'probe handoff file is owner-only (0600)' \
     test "$(mode_of "$PROBE_OUT/ai-handoff-probe-session.md")" = '600'
 

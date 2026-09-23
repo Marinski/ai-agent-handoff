@@ -1,0 +1,2 @@
+export API_KEY=secret123
+import os; os.environ['SECRET'] = 'password123'

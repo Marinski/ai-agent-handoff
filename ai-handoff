@@ -92,7 +92,13 @@ tool_is_trusted() {
         printf 'ai-handoff: missing %s (cannot verify tool integrity)\n' "$TOOLS_MANIFEST" >&2
         return 1
     fi
-    while read -r entry_hash entry_name _; do
+    # The trailing `|| [[ -n "$entry_hash" ]]` makes the final line count even
+    # when it has no terminating newline (a hand-edited or regenerated
+    # manifest could legitimately end that way), so an entry on the last line
+    # is never silently dropped — this function must fail only when a file is
+    # genuinely absent from the manifest, not when the manifest merely lacks
+    # trailing whitespace.
+    while read -r entry_hash entry_name _ || [[ -n "$entry_hash" ]]; do
         [[ "$entry_name" == "$file" ]] && { expected="$entry_hash"; break; }
     done < "$TOOLS_MANIFEST"
     [[ -n "$expected" ]] || return 1
@@ -338,15 +344,7 @@ fi
 # Guided-mode ids were already checked above; this covers positional ids.
 validate_session_id "$SESSION_ID" || exit 1
 
-if ! SESSION_LOCATION="$("$LOCATE_FN" "$SESSION_ID")"; then
-    echo "ERROR: Session not found:" >&2
-    echo "  $SESSION_ID (source: $SOURCE_TOOL)" >&2
-    exit 1
-fi
-
-# The location string embeds the session title/summary for some backends
-# (opencode/vscode), which is transcript-derived text — redact it like the
-# message bodies so it cannot smuggle credentials into the header below.
+SESSION_LOCATION=$("$LOCATE_FN" "$SESSION_ID") || { echo "ERROR: Session not found:" >&2; echo "  $SESSION_ID (source: $SOURCE_TOOL) " >&2; exit 1; }
 SESSION_LOCATION="$(printf '%s\n' "$SESSION_LOCATION" | redact_secrets)"
 
 mkdir -p "$OUTPUT_DIR"
@@ -365,7 +363,10 @@ chmod 700 "$PRIVATE_TMP"
 export TMPDIR="$PRIVATE_TMP"
 USER_TMP="$(mktemp)"
 ASSISTANT_TMP="$(mktemp)"
-cleanup() { rm -rf "$PRIVATE_TMP" 2>/dev/null || true; }
+cleanup() {
+    rm -rf "$PRIVATE_TMP" 2>/dev/null || true
+    [[ -n "${HANDOFF_TMP:-}" ]] && rm -f "$HANDOFF_TMP" 2>/dev/null || true
+}
 trap cleanup EXIT
 
 echo "Session:"
