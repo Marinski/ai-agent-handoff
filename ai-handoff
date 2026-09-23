@@ -43,6 +43,14 @@ resolve_script_dir() {
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
 
+# Shared input validation helpers (validate_tool_name, validate_session_id).
+# shellcheck source=tools/validate.sh
+if [[ ! -f "$TOOLS_DIR/validate.sh" ]]; then
+    echo "ai-handoff: missing $TOOLS_DIR/validate.sh (install the tools/ directory)" >&2
+    exit 1
+fi
+source "$TOOLS_DIR/validate.sh"
+
 available_tools_arr() {
     local f
     for f in "$TOOLS_DIR"/*.sh; do
@@ -189,6 +197,14 @@ if $GUIDED && ! $FROM_GIVEN; then
     SOURCE_TOOL="$(prompt_choice "Migrate from which tool?" "${AVAILABLE[@]}")"
 fi
 
+# Reject path-traversal / unexpected characters in the tool name before it
+# is interpolated into a filesystem path below (covers the --from flag, the
+# default, and guided picks alike).
+if ! validate_tool_name "$SOURCE_TOOL"; then
+    echo "Available: $(available_tools)" >&2
+    exit 1
+fi
+
 SOURCE_SCRIPT="$TOOLS_DIR/${SOURCE_TOOL}.sh"
 if [[ ! -f "$SOURCE_SCRIPT" ]]; then
     echo "Unsupported source tool: $SOURCE_TOOL" >&2
@@ -207,6 +223,8 @@ fi
 
 if $GUIDED; then
     SESSION_ID="$(prompt_session "$SOURCE_TOOL")"
+    # Fail fast on a bad manual/labeled id instead of after the next prompt.
+    validate_session_id "$SESSION_ID" || exit 1
     if ! $TO_GIVEN; then
         mapfile -t AVAILABLE < <(available_tools_arr)
         TARGET_TOOL="$(prompt_choice "Migrate to which tool?" "${AVAILABLE[@]}")"
@@ -218,6 +236,11 @@ if [[ -z "$SESSION_ID" ]]; then
     usage
     exit 1
 fi
+
+# Session ids reach a filesystem path (handoff filename) and the backend
+# lookups, so enforce the allowed charset and length before anything else.
+# Guided-mode ids were already checked above; this covers positional ids.
+validate_session_id "$SESSION_ID" || exit 1
 
 if ! SESSION_LOCATION="$("$LOCATE_FN" "$SESSION_ID")"; then
     echo "ERROR: Session not found:" >&2

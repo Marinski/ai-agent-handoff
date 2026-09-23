@@ -72,6 +72,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   misspelled tool name `encode`, and looked for `~/.opencode/sessions/*.jsonl`,
   a path OpenCode has never written to.
 
+### Security
+- Input validation for session IDs and source tool names, wired in from
+  `tools/validate.sh`. `SESSION_ID` must match `^[A-Za-z0-9._-]+$` and be at
+  most 200 characters; `SOURCE_TOOL` is rejected if it contains path-traversal
+  or unexpected characters (e.g. `/`, `..`) before it is interpolated into the
+  backend script path. Invalid values now fail with a clear error instead of
+  being used to build filesystem paths.
+
 ### Added (carried over from initial release)
 - User message extraction from Claude JSONL sessions
 - Assistant message extraction with Claude UI noise filtering
