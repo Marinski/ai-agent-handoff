@@ -18,6 +18,12 @@ validate_session_id() {
             "$id" >&2
         return 1
     fi
+    # Reject directory-traversal patterns: ".." or absolute paths starting with "/"
+    if [[ "$id" == ".."* ]] || [[ "$id" == /* ]]; then
+        printf 'validate_session_id: invalid session id "%s" (must not contain directory traversal)\n' \
+            "$id" >&2
+        return 1
+    fi
     if (( ${#id} > 200 )); then
         printf 'validate_session_id: session id too long (%d chars, max 200)\n' \
             "${#id}" >&2

@@ -234,6 +234,13 @@ mkdir -p "$OUTPUT_DIR"
 # copy-paste into the target tool regardless of its own working directory.
 OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 HANDOFF="$OUTPUT_DIR/ai-handoff-${SESSION_ID}.md"
+# Ensure the resolved HANDOFF path is still a child of OUTPUT_DIR,
+# protecting against session IDs that somehow resolve outside the dir.
+HANDOFF_RESOLVED="$(cd "$(dirname "$HANDOFF")" && pwd)/$(basename "$HANDOFF")"
+if [[ "$HANDOFF_RESOLVED" != "$OUTPUT_DIR/"* ]]; then
+    echo "ERROR: Constructed handoff path escapes OUTPUT_DIR" >&2
+    exit 1
+fi
 
 USER_TMP="$(mktemp)"
 ASSISTANT_TMP="$(mktemp)"
