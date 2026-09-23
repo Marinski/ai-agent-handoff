@@ -43,6 +43,13 @@ resolve_script_dir() {
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
 LIB_DIR="$SCRIPT_DIR/lib"
+# Trusted-backend manifest: the only tools/ scripts this runner will ever
+# execute. A backend (tools/<name>.sh) is trusted only when it is listed in
+# tools/SHA256SUMS and its current sha256 matches the recorded one, so a
+# script that is dropped into tools/ or edited in place is excluded from
+# discovery (available_tools_arr) and refused at the source point below —
+# a tampered or injected tools/ file can never get arbitrary code sourced.
+TOOLS_MANIFEST="$TOOLS_DIR/SHA256SUMS"
 
 # Shared input validation helpers (validate_tool_name, validate_session_id).
 # shellcheck source=lib/validate.sh
@@ -60,21 +67,60 @@ if [[ ! -f "$LIB_DIR/redact.sh" ]]; then
 fi
 source "$LIB_DIR/redact.sh"
 
+# Compute a file's sha256 (GNU sha256sum or BSD/macOS shasum). Fails closed
+# — no checksum tool, empty output, non-zero exit — so an unverifiable file
+# is never treated as trusted.
+sha256_of() {
+    local f="$1" hash rest
+    if command -v sha256sum >/dev/null 2>&1; then
+        read -r hash rest < <(sha256sum "$f") || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+        read -r hash rest < <(shasum -a 256 "$f") || return 1
+    else
+        return 1
+    fi
+    [[ -n "$hash" ]] && printf '%s\n' "$hash"
+}
+
+# A backend named <name> (tools/<name>.sh) is trusted only when it appears
+# in the manifest (TOOLS_MANIFEST) with a sha256 matching the file's current
+# content. Fails closed on a missing manifest or a non-matching entry
+# (unknown file, modified file, or an unverifiable checksum).
+tool_is_trusted() {
+    local name="$1" file="${1}.sh" expected="" entry_hash entry_name actual
+    if [[ ! -f "$TOOLS_MANIFEST" ]]; then
+        printf 'ai-handoff: missing %s (cannot verify tool integrity)\n' "$TOOLS_MANIFEST" >&2
+        return 1
+    fi
+    while read -r entry_hash entry_name _; do
+        [[ "$entry_name" == "$file" ]] && { expected="$entry_hash"; break; }
+    done < "$TOOLS_MANIFEST"
+    [[ -n "$expected" ]] || return 1
+    actual="$(sha256_of "$TOOLS_DIR/$file")" || return 1
+    [[ -n "$actual" && "$actual" == "$expected" ]]
+}
+
 # Discover valid backend scripts: a tools/<name>.sh file is only collected
 # when its basename matches the tool-name convention (^[a-z][a-z0-9_-]*$,
-# the same rule validate_tool_name enforces) AND the file defines that
-# tool's two required functions, <name>_locate and <name>_extract. Stray
-# *.sh files (scratch notes, partial backends, renamed copies of an
-# existing backend) must never surface in the guided picker or the
-# "Available:" hints. Detection is a static grep over the file, never a
-# source — a file that merely globs as *.sh has not been vetted for
-# arbitrary top-level code.
+# the same rule validate_tool_name enforces), the file is registered in the
+# trusted manifest (tools/SHA256SUMS) with a matching checksum, AND it
+# defines that tool's two required functions, <name>_locate and
+# <name>_extract. Stray *.sh files (scratch notes, partial backends,
+# renamed/tampered copies of an existing backend, unregistered files) must
+# never surface in the guided picker or the "Available:" hints. Detection
+# is a static grep over a manifest-verified file, never a source — a file
+# that merely globs as *.sh has not been vetted for arbitrary top-level
+# code, and is refused outright at the source point below.
 available_tools_arr() {
     local f name
     for f in "$TOOLS_DIR"/*.sh; do
         [[ -e "$f" ]] || continue
         name="$(basename "$f" .sh)"
         [[ "$name" =~ ^[a-z][a-z0-9_-]*$ ]] || continue
+        # Integrity gate: only manifest-listed, checksum-verified files are
+        # valid tools. A tampered or injected backend is excluded here and
+        # refused outright before it could ever be sourced.
+        tool_is_trusted "$name" || continue
         # Plain () is literal in a basic regex: matches "name_locate() {".
         grep -q "^[[:space:]]*${name}_locate[[:space:]]*()" "$f" || continue
         grep -q "^[[:space:]]*${name}_extract[[:space:]]*()" "$f" || continue
@@ -232,6 +278,19 @@ fi
 SOURCE_SCRIPT="$TOOLS_DIR/${SOURCE_TOOL}.sh"
 if [[ ! -f "$SOURCE_SCRIPT" ]]; then
     echo "Unsupported source tool: $SOURCE_TOOL" >&2
+    echo "Available: $(available_tools)" >&2
+    exit 1
+fi
+
+# Integrity gate before any tools/ script is executed: the backend must be
+# listed in the trusted manifest (tools/SHA256SUMS) with a matching
+# checksum, or the run is refused outright. This is what actually prevents
+# arbitrary code execution from a tampered or injected tools/ file — the
+# discovery filter above only hides such files from the picker/help, while
+# this stops them from ever being sourced even when named explicitly via
+# --from.
+if ! tool_is_trusted "$SOURCE_TOOL"; then
+    echo "Refusing to source tools/${SOURCE_TOOL}.sh: not in the trusted manifest (tools/SHA256SUMS) or checksum mismatch" >&2
     echo "Available: $(available_tools)" >&2
     exit 1
 fi
