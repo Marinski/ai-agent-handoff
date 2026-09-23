@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and stdin/stdout are both a tty — a script or pipe with a missing id still
   just fails with the usage message, never hangs on a prompt.
 
+### Security
+- The `source` point now refuses any backend whose fully-resolved path is
+  not located inside `tools/`: a new `path_is_within_dir` helper (in
+  `lib/validate.sh`) resolves every symlink in the constructed
+  `SOURCE_SCRIPT` and `TOOLS_DIR` and aborts the run when the resolved
+  location escapes the designated tools directory — checked immediately
+  before the backend is sourced, on top of the existing tool-name regex and
+  manifest/checksum gates. This closes the last string-vs-reality gap: a
+  symlinked backend, a `tools/` entry that drops through `..`, or a drift
+  in `TOOLS_DIR` can no longer make `source` reach a file outside `tools/`.
+
 ### Fixed
 - `tools/claude.sh`'s noise filter (task notifications, command echoes,
   tool-call metadata) was only ever applied to assistant messages, never to

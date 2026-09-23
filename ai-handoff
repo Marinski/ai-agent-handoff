@@ -294,6 +294,19 @@ if ! tool_is_trusted "$SOURCE_TOOL"; then
     echo "Available: $(available_tools)" >&2
     exit 1
 fi
+
+# Final path gate at the source point: SOURCE_SCRIPT's fully resolved path
+# must still be located inside TOOLS_DIR. The tool-name regex and manifest
+# checks above already block traversal in the literal string, but this
+# verifies the *resolved* path at the exact moment of `source` — so an
+# injection that survives string-level validation (a symlinked backend, a
+# TOOLS_DIR whose real location drifted) can never make `source` reach a
+# file outside the designated tools directory.
+if ! path_is_within_dir "$SOURCE_SCRIPT" "$TOOLS_DIR"; then
+    echo "Refusing to source $SOURCE_SCRIPT: resolves outside $TOOLS_DIR" >&2
+    echo "Available: $(available_tools)" >&2
+    exit 1
+fi
 # shellcheck source=/dev/null
 source "$SOURCE_SCRIPT"
 

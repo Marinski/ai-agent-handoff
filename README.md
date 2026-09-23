@@ -171,7 +171,10 @@ that define the two required functions `cursor_locate` / `cursor_extract`;
 anything else in `tools/` (scratch files, partial backends, renamed copies)
 is ignored rather than offered in the guided picker or "Available" list.
 The tool name is additionally validated before it is interpolated into the
-backend path.
+backend path, and right before the backend is sourced the fully-resolved
+`tools/<tool>.sh` path is re-checked to still be located inside `tools/` —
+so a backend that is a symlink or otherwise resolves outside the designated
+tools directory is refused rather than executed.
 
 ## Roadmap
 

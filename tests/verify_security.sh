@@ -11,6 +11,8 @@
 #   3. The generated handoff file is owner-only (0600)
 #   4. Credential patterns (API_KEY=..., Bearer <token>, sk-..., ghp_...,
 #      user:password@host URLs, ...) are redacted from the handoff
+#   5. The source point refuses any backend whose resolved path escapes
+#      tools/ (path_is_within_dir gate before `source`)
 #
 # Everything runs inside a sandbox under $TMPDIR; nothing touches the real
 # $HOME, the real ~/.claude store, or a shared temp namespace. Synthetic
@@ -121,6 +123,60 @@ assert_fails_with 'rejects absolute path in session id (/tmp/x)' \
 assert_fails_with 'rejects whitespace in session id' \
     'invalid session id' \
     run_bin 'a b' --from claude
+
+# ---------------------------------------------------------------------------
+# Source-path containment gate (path_is_within_dir, from lib/validate.sh).
+# Unit-level checks for the gate that makes `source` refuse any backend
+# whose fully-resolved location is outside tools/. These cover the boundary
+# cases a tool-name regex cannot see: sibling directory names, `..`
+# escapes, absolute paths, and symlinks that point outside the designated
+# directory.
+# ---------------------------------------------------------------------------
+# shellcheck source=../lib/validate.sh
+source "$LIB/validate.sh"
+
+mkdir -p "$SANDBOX/outside" "$SANDBOX/tools" "$SANDBOX/tools-evil"
+printf '#!/usr/bin/env bash\n' > "$SANDBOX/outside/evil.sh"
+printf '#!/usr/bin/env bash\n' > "$SANDBOX/tools-evil/fake.sh"
+
+check 'gate: backend inside tools/ is accepted' \
+    path_is_within_dir "$TOOLS/claude.sh" "$TOOLS"
+
+check 'gate: any file inside tools/ is accepted (trust decided elsewhere)' \
+    path_is_within_dir "$TOOLS/SHA256SUMS" "$TOOLS"
+
+cp "$TOOLS/claude.sh" "$SANDBOX/tools/real-backend.sh"
+ln -s real-backend.sh "$SANDBOX/tools/linked-in.sh"
+check 'gate: symlink whose target stays inside tools/ is accepted' \
+    path_is_within_dir "$SANDBOX/tools/linked-in.sh" "$SANDBOX/tools"
+
+assert_fails_with 'gate: refuses a `..` escape to a real outside file' \
+    'resolves outside' \
+    path_is_within_dir "$SANDBOX/tools/../outside/evil.sh" "$SANDBOX/tools"
+
+assert_fails_with 'gate: refuses an absolute path outside the dir' \
+    'resolves outside' \
+    path_is_within_dir /etc/passwd "$SANDBOX/tools"
+
+assert_fails_with 'gate: sibling dir name (tools-evil) cannot pass for tools' \
+    'resolves outside' \
+    path_is_within_dir "$SANDBOX/tools-evil/fake.sh" "$SANDBOX/tools"
+
+ln -s "$SANDBOX/outside/evil.sh" "$SANDBOX/tools/sneaky-abs.sh"
+assert_fails_with 'gate: a tools/ entry that is an absolute symlink outside is refused' \
+    'resolves outside' \
+    path_is_within_dir "$SANDBOX/tools/sneaky-abs.sh" "$SANDBOX/tools"
+
+ln -s ../outside/evil.sh "$SANDBOX/tools/sneaky-rel.sh"
+assert_fails_with 'gate: a tools/ entry that is a relative symlink outside is refused' \
+    'resolves outside' \
+    path_is_within_dir "$SANDBOX/tools/sneaky-rel.sh" "$SANDBOX/tools"
+
+ln -sf loop-b.sh "$SANDBOX/tools/loop-a.sh"
+ln -sf loop-a.sh "$SANDBOX/tools/loop-b.sh"
+assert_fails_with 'gate: a symlink loop is refused (fails closed)' \
+    'too many symlinks' \
+    path_is_within_dir "$SANDBOX/tools/loop-a.sh" "$SANDBOX/tools"
 
 # ---------------------------------------------------------------------------
 # Build a synthetic claude session carrying secrets.
@@ -262,6 +318,54 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 5. The source point refuses any backend whose resolved path escapes tools/
+#
+# End-to-end: a private copy of the tree with a backend that is a symlink to
+# a file OUTSIDE tools/, fully vouched for in the sandbox manifest (name
+# regex passes, checksum matches the symlink target's actual content). The
+# checksum gate alone would let this through — only the resolved-path
+# containment gate (path_is_within_dir, wired in before `source`) can stop
+# `ai-handoff` from sourcing the outside file.
+# ---------------------------------------------------------------------------
+echo "== 5. source never resolves outside tools/ =="
+
+ESCAPE_TREE="$SANDBOX/escape"
+mkdir -p "$ESCAPE_TREE"
+cp "$BIN" "$ESCAPE_TREE/"
+cp -r "$TOOLS" "$ESCAPE_TREE/tools/"
+cp -r "$LIB" "$ESCAPE_TREE/lib/"
+cat > "$SANDBOX/outside/escapetool.sh" <<'ESCAPE'
+#!/usr/bin/env bash
+escapetool_locate() { printf 'injected outside backend\n'; }
+escapetool_extract() { printf 'injected\n' > "$3"; printf 'injected\n' > "$4"; }
+ESCAPE
+ln -s "$SANDBOX/outside/escapetool.sh" "$ESCAPE_TREE/tools/escapetool.sh"
+# Vouch for the symlinked backend in the sandbox manifest using the OUTSIDE
+# file's checksum: content verification alone would accept this backend.
+# Same checksum fallback as the binary (GNU sha256sum, BSD/macOS shasum), so
+# section 5 never hard-depends on GNU coreutils or aborts under `set -e`.
+if command -v sha256sum >/dev/null 2>&1; then
+    ESCAPE_HASH="$(sha256sum "$SANDBOX/outside/escapetool.sh" | cut -d' ' -f1)"
+elif command -v shasum >/dev/null 2>&1; then
+    ESCAPE_HASH="$(shasum -a 256 "$SANDBOX/outside/escapetool.sh" | cut -d' ' -f1)"
+else
+    ESCAPE_HASH=""
+fi
+if [[ -z "$ESCAPE_HASH" ]]; then
+    echo "verify_security: need sha256sum or shasum to vouch the section-5 manifest entry" >&2
+    FAILURES=$((FAILURES + 1))
+else
+    printf '\n%s  escapetool.sh\n' "$ESCAPE_HASH" >> "$ESCAPE_TREE/tools/SHA256SUMS"
+
+    assert_fails_with 'source gate: symlinked backend escaping tools/ is refused end-to-end' \
+        'resolves outside' \
+        env HOME="$FAKE_HOME" TMPDIR="$TEST_TMP" \
+        bash "$ESCAPE_TREE/ai-handoff" 'esc-session' "$OUT" --from escapetool --to claude
+
+    check 'source gate: no handoff is written for the refused backend' \
+        test ! -e "$OUT/ai-handoff-esc-session.md"
+fi
+
 echo
 if (( FAILURES > 0 )); then
     echo "verify_security: $FAILURES check(s) FAILED" >&2
