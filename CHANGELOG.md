@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Tool discovery (`available_tools_arr`) now filters `tools/*.sh` by backend
+  validity instead of globbing every file: a file is collected as an
+  available tool only when its basename matches `^[a-z][a-z0-9_-]*$` and it
+  defines the required `<tool>_locate` / `<tool>_extract` functions, so
+  stray scripts dropped in `tools/` (scratch files, partial backends,
+  renamed copies of an existing backend) no longer show up in the guided
+  picker or `--help`'s "Available tools:" line. Detection is a static grep
+  over the file — unvalidated files are never sourced during discovery.
 - Shared helper scripts (`lib/validate.sh`, `lib/redact.sh`) moved out of
   `tools/` into a new `lib/` directory, so the `tools/*.sh` glob only matches
   tool backend scripts. `ai-handoff` (and the security test suite) now load

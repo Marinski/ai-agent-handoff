@@ -165,9 +165,13 @@ cursor_list() {
 ```
 
 No changes to `ai-handoff` itself are needed — `--from cursor` picks it up
-automatically once the file exists. Backend filenames must match
-`^[a-z][a-z0-9_-]*$` (lowercase letter to start); the tool name is validated
-before it is interpolated into the backend path.
+automatically once the file exists. Discovery only collects files whose
+basename matches `^[a-z][a-z0-9_-]*$` (lowercase letter to start) **and**
+that define the two required functions `cursor_locate` / `cursor_extract`;
+anything else in `tools/` (scratch files, partial backends, renamed copies)
+is ignored rather than offered in the guided picker or "Available" list.
+The tool name is additionally validated before it is interpolated into the
+backend path.
 
 ## Roadmap
 

@@ -60,11 +60,25 @@ if [[ ! -f "$LIB_DIR/redact.sh" ]]; then
 fi
 source "$LIB_DIR/redact.sh"
 
+# Discover valid backend scripts: a tools/<name>.sh file is only collected
+# when its basename matches the tool-name convention (^[a-z][a-z0-9_-]*$,
+# the same rule validate_tool_name enforces) AND the file defines that
+# tool's two required functions, <name>_locate and <name>_extract. Stray
+# *.sh files (scratch notes, partial backends, renamed copies of an
+# existing backend) must never surface in the guided picker or the
+# "Available:" hints. Detection is a static grep over the file, never a
+# source — a file that merely globs as *.sh has not been vetted for
+# arbitrary top-level code.
 available_tools_arr() {
-    local f
+    local f name
     for f in "$TOOLS_DIR"/*.sh; do
         [[ -e "$f" ]] || continue
-        basename "$f" .sh
+        name="$(basename "$f" .sh)"
+        [[ "$name" =~ ^[a-z][a-z0-9_-]*$ ]] || continue
+        # Plain () is literal in a basic regex: matches "name_locate() {".
+        grep -q "^[[:space:]]*${name}_locate[[:space:]]*()" "$f" || continue
+        grep -q "^[[:space:]]*${name}_extract[[:space:]]*()" "$f" || continue
+        printf '%s\n' "$name"
     done
 }
 
