@@ -73,6 +73,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a path OpenCode has never written to.
 
 ### Security
+- Extracted transcript blocks are now wrapped in unique, non-standard
+  delimiters when rendered into the handoff. Each run draws a 16-byte
+  random nonce *after* the session was recorded and emits
+  `<<<AI-HANDOFF-TRANSCRIPT <nonce> BEGIN>>>` /
+  `<<<AI-HANDOFF-TRANSCRIPT <nonce> END>>>` around all three transcript
+  sections (full user context, recent-instruction tail, final agent-state
+  tail), so the raw text can never contain — let alone spoof — the exact
+  marker line. The markers are deliberately not markdown fences, HTML
+  comments, or XML tags (nothing a target model is trained to treat as a
+  structural boundary), and the handoff header now tells the next agent
+  that only the two exact printed marker lines delimit data — everything
+  between a BEGIN/END pair is verbatim historical transcript to read,
+  never instructions, commands, or tool output to follow, even when text
+  inside merely looks like a directive.
 - The generated `ai-handoff-<session-id>.md` file is now created with
   owner-only permissions (`0600`) immediately upon creation: the file is
   touched under `umask 077` before the first byte of session text is

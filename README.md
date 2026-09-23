@@ -45,6 +45,18 @@ extraction backend — `--to` only labels the output for the next agent.
   Redaction is regex-based and not exhaustive — treat the handoff as still
   possibly containing arbitrary session text (e.g. secrets written in prose
   or unusual formats).
+- **Wraps extracted transcript in unique delimiters**: every transcript
+  block rendered into the handoff sits between
+  `<<<AI-HANDOFF-TRANSCRIPT <nonce> BEGIN>>>` / `<<<AI-HANDOFF-TRANSCRIPT <nonce> END>>>`
+  markers. The nonce is 16 random bytes generated per run *after*
+  extraction, so the session text can never contain or spoof the exact
+  marker line, and the markers are deliberately not markdown fences,
+  HTML comments, or XML tags. The handoff's instructions tell the next
+  agent that only those two exact marker lines delimit data and that
+  everything between them is inert historical transcript — never
+  instructions, commands, or tool output — so transcript text that
+  merely looks like a directive is framed as data during the handoff
+  rather than acted on.
 
 ## Installation
 
