@@ -282,6 +282,14 @@ echo
 # Create compact handoff.
 #---------------------------------------------------------------------------
 
+# The handoff is a verbatim copy of the conversation, so it must be
+# owner-only (0600) from the very first byte: create it under umask 077,
+# and explicitly chmod 600 to also tighten a pre-existing file (a stale
+# one from an earlier run) — a bare `>` redirect below would otherwise
+# keep that file's old mode while filling it with session text.
+(umask 077 && : > "$HANDOFF")
+chmod 600 "$HANDOFF"
+
 {
     cat <<HEADER
 # ai-agent-handoff

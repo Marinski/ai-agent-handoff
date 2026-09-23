@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a path OpenCode has never written to.
 
 ### Security
+- The generated `ai-handoff-<session-id>.md` file is now created with
+  owner-only permissions (`0600`) immediately upon creation: the file is
+  touched under `umask 077` before the first byte of session text is
+  written, then explicitly `chmod 600` so a pre-existing file from an
+  earlier run is tightened too (a bare `>` redirect keeps an existing
+  file's mode). Previously the handoff inherited the ambient umask
+  (typically `0644`), leaving conversation contents readable to other
+  local users.
 - Input validation for session IDs and source tool names, wired in from
   `tools/validate.sh`. `SESSION_ID` must match `^[A-Za-z0-9._-]+$` and be at
   most 200 characters; `SOURCE_TOOL` is rejected if it contains path-traversal
