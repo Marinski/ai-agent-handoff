@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Shared helper scripts (`lib/validate.sh`, `lib/redact.sh`) moved out of
+  `tools/` into a new `lib/` directory, so the `tools/*.sh` glob only matches
+  tool backend scripts. `ai-handoff` (and the security test suite) now load
+  the helpers from `lib/`; the per-tool exclusion hack in the picker is gone.
 - The closing "first prompt" block now includes the handoff file's absolute
   path, so it's directly copy-pasteable into the target tool without also
   having to scroll up and copy the path from the "Handoff:" line separately.

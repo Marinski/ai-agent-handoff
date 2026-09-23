@@ -42,32 +42,28 @@ resolve_script_dir() {
 
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
+LIB_DIR="$SCRIPT_DIR/lib"
 
 # Shared input validation helpers (validate_tool_name, validate_session_id).
-# shellcheck source=tools/validate.sh
-if [[ ! -f "$TOOLS_DIR/validate.sh" ]]; then
-    echo "ai-handoff: missing $TOOLS_DIR/validate.sh (install the tools/ directory)" >&2
+# shellcheck source=lib/validate.sh
+if [[ ! -f "$LIB_DIR/validate.sh" ]]; then
+    echo "ai-handoff: missing $LIB_DIR/validate.sh (install the lib/ directory)" >&2
     exit 1
 fi
-source "$TOOLS_DIR/validate.sh"
+source "$LIB_DIR/validate.sh"
 
 # Shared secret redaction helpers (redact_secrets, redact_file).
-# shellcheck source=tools/redact.sh
-if [[ ! -f "$TOOLS_DIR/redact.sh" ]]; then
-    echo "ai-handoff: missing $TOOLS_DIR/redact.sh (install the tools/ directory)" >&2
+# shellcheck source=lib/redact.sh
+if [[ ! -f "$LIB_DIR/redact.sh" ]]; then
+    echo "ai-handoff: missing $LIB_DIR/redact.sh (install the lib/ directory)" >&2
     exit 1
 fi
-source "$TOOLS_DIR/redact.sh"
+source "$LIB_DIR/redact.sh"
 
 available_tools_arr() {
     local f
     for f in "$TOOLS_DIR"/*.sh; do
         [[ -e "$f" ]] || continue
-        # Shared helper scripts (validate.sh, redact.sh) are not tool
-        # backends and must not show up as migratable tools.
-        case "$(basename "$f")" in
-            validate.sh|redact.sh) continue ;;
-        esac
         basename "$f" .sh
     done
 }

@@ -26,6 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 BIN="$ROOT/ai-handoff"
 TOOLS="$ROOT/tools"
+LIB="$ROOT/lib"
 
 FAILURES=0
 
@@ -74,8 +75,8 @@ for dep in bash sed jq python3 stat mktemp grep; do
         exit 1
     }
 done
-if [[ ! -f "$BIN" || ! -d "$TOOLS" ]]; then
-    echo "verify_security: cannot find ai-handoff or tools/ under $ROOT" >&2
+if [[ ! -f "$BIN" || ! -d "$TOOLS" || ! -d "$LIB" ]]; then
+    echo "verify_security: cannot find ai-handoff, tools/, or lib/ under $ROOT" >&2
     exit 1
 fi
 
@@ -185,6 +186,7 @@ echo "== 4. extraction scratch files are private =="
 mkdir -p "$PROBE_TREE"
 cp "$BIN" "$PROBE_TREE/"
 cp -r "$TOOLS" "$PROBE_TREE/tools/"
+cp -r "$LIB" "$PROBE_TREE/lib/"
 cat > "$PROBE_TREE/tools/securityprobe.sh" <<'PROBE'
 #!/usr/bin/env bash
 securityprobe_locate() {
