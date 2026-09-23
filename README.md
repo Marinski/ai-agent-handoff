@@ -36,6 +36,15 @@ extraction backend — `--to` only labels the output for the next agent.
   - Earlier checkpoints and completed work
   - Continuation prompt for the new agent
 - **Preserves session state** across token limits and tool switches
+- **Redacts secrets** from the handoff: common credential patterns
+  (`API_KEY=...`, `export SECRET=...`, `Bearer <token>`, `sk-...` /
+  `ghp_...` / `AKIA...` tokens, `scheme://user:password@host` connection
+  URLs) are replaced with `[REDACTED]` during extraction, so credentials are
+  not copied verbatim into the handoff file. Variable names are kept
+  (`API_KEY=[REDACTED]`) so the next agent still sees which secret was set.
+  Redaction is regex-based and not exhaustive — treat the handoff as still
+  possibly containing arbitrary session text (e.g. secrets written in prose
+  or unusual formats).
 
 ## Installation
 

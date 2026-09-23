@@ -93,6 +93,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TMPDIR` at it, and creates `USER_TMP`/`ASSISTANT_TMP` inside it, so raw
   session text stays unreadable to other local users regardless of umask and
   is removed wholesale on exit.
+- Session secrets are redacted from the handoff before it is written. After
+  the source backend extracts plain-text user/assistant messages, a shared
+  regex redaction pass (`tools/redact.sh`) runs over both streams (and over
+  the `SESSION_LOCATION` header text, which embeds session titles) and
+  replaces common credential patterns with `[REDACTED]`:
+  - `KEY=value` assignments whose variable name signals a credential
+    (`API_KEY=...`, `export SECRET=...`, `PASSWORD=...`, `my_token=...`),
+    keeping the variable name so the handoff still shows which secret was set;
+  - well-known bearer/API token formats as bare words (`sk-...`, `ghp_...`,
+    `github_pat_...`, `AKIA...`, `xox*-...`, `AIza...`, `glpat-...`, and
+    `Bearer <token>`); and
+  - URL connection strings with embedded passwords
+    (`scheme://user:password@host`).
+  Redaction is regex-based and not exhaustive — the handoff may still contain
+  arbitrary session text, including secrets in unusual formats.
+- `tools/validate.sh` (and the new `tools/redact.sh`) are shared helper
+  scripts, not tool backends — the guided picker and `--help` no longer list
+  them as migratable tools.
 
 ### Added (carried over from initial release)
 - User message extraction from Claude JSONL sessions

@@ -51,10 +51,24 @@ if [[ ! -f "$TOOLS_DIR/validate.sh" ]]; then
 fi
 source "$TOOLS_DIR/validate.sh"
 
+# Shared secret redaction helpers (redact_secrets, redact_file).
+# shellcheck source=tools/redact.sh
+if [[ ! -f "$TOOLS_DIR/redact.sh" ]]; then
+    echo "ai-handoff: missing $TOOLS_DIR/redact.sh (install the tools/ directory)" >&2
+    exit 1
+fi
+source "$TOOLS_DIR/redact.sh"
+
 available_tools_arr() {
     local f
     for f in "$TOOLS_DIR"/*.sh; do
-        [[ -e "$f" ]] && basename "$f" .sh
+        [[ -e "$f" ]] || continue
+        # Shared helper scripts (validate.sh, redact.sh) are not tool
+        # backends and must not show up as migratable tools.
+        case "$(basename "$f")" in
+            validate.sh|redact.sh) continue ;;
+        esac
+        basename "$f" .sh
     done
 }
 
@@ -248,6 +262,11 @@ if ! SESSION_LOCATION="$("$LOCATE_FN" "$SESSION_ID")"; then
     exit 1
 fi
 
+# The location string embeds the session title/summary for some backends
+# (opencode/vscode), which is transcript-derived text — redact it like the
+# message bodies so it cannot smuggle credentials into the header below.
+SESSION_LOCATION="$(printf '%s\n' "$SESSION_LOCATION" | redact_secrets)"
+
 mkdir -p "$OUTPUT_DIR"
 # Absolute, so the path in the "first prompt" block below is safe to
 # copy-paste into the target tool regardless of its own working directory.
@@ -277,6 +296,13 @@ echo "  $SESSION_LOCATION"
 echo
 
 "$EXTRACT_FN" "$SESSION_ID" "$SESSION_LOCATION" "$USER_TMP" "$ASSISTANT_TMP"
+
+# Redact common credential patterns (API_KEY=..., export KEY=..., sk-...,
+# user:password@host URLs, ...) from the extracted text before it is rendered
+# into the handoff. In-place on both scratch files, so every section below
+# (full context, instruction tails, reasoning tails) reads redacted text.
+redact_file "$USER_TMP"
+redact_file "$ASSISTANT_TMP"
 
 # ---------------------------------------------------------------------------
 # Create compact handoff.
