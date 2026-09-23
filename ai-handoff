@@ -42,6 +42,8 @@ resolve_script_dir() {
 
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
+# Shared validation helper for session IDs.
+source "$TOOLS_DIR/validate.sh"
 
 available_tools_arr() {
     local f
@@ -176,7 +178,53 @@ while [[ $# -gt 0 ]]; do
 done
 
 SESSION_ID="${POSITIONAL[0]:-}"
-[[ ${#POSITIONAL[@]} -ge 2 ]] && OUTPUT_DIR="${POSITIONAL[1]}"
+validate_session_id "$SESSION_ID"
+[[ ${#POSITIONAL[@]} -ge 2 ]] && OUTPUT_DIR="${POSITIONAL[1]}" || OUTPUT_DIR="$PWD"
+
+# --- OUTPUT_DIR safety hardening Start ---
+
+# Reject OUTPUT_DIR if it resolves to a system-protected path.
+# This guards against malicious or accidental paths like /etc, /usr, /var, /boot.
+case "$OUTPUT_DIR" in
+    /etc/*|/usr/*|/var/*|/boot/*|/bin/*|/sbin/*)
+        printf 'ERROR: OUTPUT_DIR "%s" resolves to a system-protected path.\n' "$OUTPUT_DIR" >&2
+        exit 1
+        ;;
+esac
+
+# If OUTPUT_DIR is an absolute path starting with / but not covered above,
+# still ensure it doesn't look like a system root.
+if [[ "$OUTPUT_DIR" = /* ]]; then
+    # Allow common user dirs (~/, /home, /tmp) but reject bare /
+    if [[ "$OUTPUT_DIR" == / ]]; then
+        printf 'ERROR: OUTPUT_DIR "/" is not allowed.\n' >&2
+        exit 1
+    fi
+fi
+
+# Verify write access to the resolved path.
+# Resolve symlinks/relative paths first, then test writeability.
+resolved_output_dir="$(cd "$OUTPUT_DIR" && pwd)" 2>/dev/null || {
+    printf 'ERROR: Cannot resolve OUTPUT_DIR "%s".\n' "$OUTPUT_DIR" >&2
+    exit 1
+}
+
+# Check write access by attempting to create a test file.
+test_file=".ai_handoff_write_test_$$"
+if ! touch "$resolved_output_dir/$test_file" 2>/dev/null; then
+    printf 'ERROR: No write access to OUTPUT_DIR "%s".\n' "$resolved_output_dir" >&2
+    exit 1
+fi
+# Clean up the test file.
+rm -f "$resolved_output_dir/$test_file"
+
+# Verify the directory exists; create it if needed (safe because we just confirmed write access).
+mkdir -p "$resolved_output_dir"
+
+# --- OUTPUT_DIR safety hardening End ---
+
+# Propagate the resolved path so the rest of the script uses the absolute path.
+OUTPUT_DIR="$resolved_output_dir"
 
 # Guided mode: only kicks in when no session id was given at all, and only
 # in a real terminal — a script or pipe with a missing id still just fails
@@ -207,6 +255,7 @@ fi
 
 if $GUIDED; then
     SESSION_ID="$(prompt_session "$SOURCE_TOOL")"
+    validate_session_id "$SESSION_ID"
     if ! $TO_GIVEN; then
         mapfile -t AVAILABLE < <(available_tools_arr)
         TARGET_TOOL="$(prompt_choice "Migrate to which tool?" "${AVAILABLE[@]}")"
@@ -225,11 +274,14 @@ if ! SESSION_LOCATION="$("$LOCATE_FN" "$SESSION_ID")"; then
     exit 1
 fi
 
-mkdir -p "$OUTPUT_DIR"
-# Absolute, so the path in the "first prompt" block below is safe to
-# copy-paste into the target tool regardless of its own working directory.
-OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 HANDOFF="$OUTPUT_DIR/ai-handoff-${SESSION_ID}.md"
+# Ensure the resolved HANDOFF path is still a child of OUTPUT_DIR,
+# protecting against session IDs that somehow resolve outside the dir.
+HANDOFF_RESOLVED="$(cd "$(dirname "$HANDOFF")" && pwd)/$(basename "$HANDOFF")"
+if [[ "$HANDOFF_RESOLVED" != "$OUTPUT_DIR/"* ]]; then
+    echo "ERROR: Constructed handoff path escapes OUTPUT_DIR" >&2
+    exit 1
+fi
 
 USER_TMP="$(mktemp)"
 ASSISTANT_TMP="$(mktemp)"
