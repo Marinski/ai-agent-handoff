@@ -198,6 +198,24 @@ if $FROM_GIVEN; then
 fi
 if $TO_GIVEN; then
     validate_tool_name "$TARGET_TOOL" || exit 1
+    # --to only labels the handoff and never sources a backend of its own,
+    # but it must still name one of the discovered backends — otherwise the
+    # handoff would be labeled for a tool that doesn't exist. Check it
+    # against the same filtered available_tools list the guided picker
+    # offers (an array membership test, not `grep -q` in a pipe, which
+    # races SIGPIPE under `set -o pipefail`), so `--to validate` (a tools/
+    # helper, not a backend) and `--to typo` are rejected here with the
+    # valid targets named.
+    mapfile -t VALID_TARGETS < <(available_tools_arr)
+    TARGET_VALID=false
+    for tool in "${VALID_TARGETS[@]}"; do
+        [[ "$tool" == "$TARGET_TOOL" ]] && TARGET_VALID=true
+    done
+    if ! $TARGET_VALID; then
+        echo "Unsupported target tool: $TARGET_TOOL" >&2
+        echo "Available: $(available_tools)" >&2
+        exit 1
+    fi
 fi
 
 SESSION_ID="${POSITIONAL[0]:-}"

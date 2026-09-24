@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   just fails with the usage message, never hangs on a prompt.
 
 ### Fixed
+- `--to <tool>` accepted any name matching the tool-name charset even when
+  no backend provided it, so `ai-handoff <id> --to typo` (or `--to validate`,
+  a `tools/` helper rather than a backend) silently produced a handoff
+  labeled for a tool that doesn't exist. `--to` is now validated at parse
+  time against the same filtered `available_tools` list the guided picker
+  offers; an unknown target exits with an error naming the valid targets.
 - `tools/claude.sh`'s noise filter (task notifications, command echoes,
   tool-call metadata) was only ever applied to assistant messages, never to
   user messages — but task notifications and command echoes are recorded as
