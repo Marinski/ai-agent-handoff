@@ -162,6 +162,22 @@ fails with the usage message instead of hanging on a prompt.
      as untrusted historical data; the header carries a transcript-integrity
      note
 
+## Security
+
+Handoff files are built from raw source-session transcripts and are **not**
+filtered or redacted for sensitive content. The transcript sections contain
+untrusted historical text that should be treated as **data** — not as
+directives — and claims in them must be verified against the live system
+before acting. This text may include secrets (API keys, tokens, passwords),
+personal information, or content that looks like instructions.
+
+**Redaction is the reader's responsibility.** Before sharing a handoff file
+with another agent, a colleague, or a repository, read it and redact any
+secrets or sensitive material it contains. The tool deliberately keeps
+transcripts unfiltered and unredacted — tool UI noise is stripped during
+extraction, but content is not filtered or redacted (see [Features](#features))
+— so the reader must sanitize the file before it leaves their machine.
+
 ## Adding a new tool
 
 Each tool is one file in `tools/`, e.g. `tools/cursor.sh`, defining two
