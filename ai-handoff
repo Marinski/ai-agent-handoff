@@ -42,12 +42,14 @@ resolve_script_dir() {
 
 SCRIPT_DIR="$(resolve_script_dir)"
 TOOLS_DIR="$SCRIPT_DIR/tools"
-# Shared validation helper for session IDs.
+# Shared validation helpers for tool names and session IDs.
 source "$TOOLS_DIR/validate.sh"
 
 available_tools_arr() {
     local f
     for f in "$TOOLS_DIR"/*.sh; do
+        # Helper scripts like validate.sh are not tool backends.
+        [[ "$f" == */validate.sh ]] && continue
         [[ -e "$f" ]] && basename "$f" .sh
     done
 }
@@ -168,8 +170,8 @@ POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --from) SOURCE_TOOL="${2:?--from needs a value}"; FROM_GIVEN=true; shift 2 ;;
-        --to)   TARGET_TOOL="${2:?--to needs a value}"; TO_GIVEN=true; shift 2 ;;
+        --from) SOURCE_TOOL="${2:?--from needs a value}"; FROM_GIVEN=true; validate_tool_name "$SOURCE_TOOL" || exit 1; shift 2 ;;
+        --to)   TARGET_TOOL="${2:?--to needs a value}"; TO_GIVEN=true; validate_tool_name "$TARGET_TOOL" || exit 1; shift 2 ;;
         --out)  OUTPUT_DIR="${2:?--out needs a value}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         --*) echo "Unknown flag: $1" >&2; usage; exit 1 ;;
