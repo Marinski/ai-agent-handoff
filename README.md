@@ -17,7 +17,7 @@ from.
 |----------|------------------------------------------------------------|
 | `claude` | JSONL files under `~/.claude/projects/**/<session-id>.jsonl` |
 | `opencode` | SQLite database at `~/.local/share/opencode/opencode.db` (`session`/`message`/`part` tables) |
-| `vscode` | SQLite database at `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db` (`sessions`/`turns` tables) — VS Code's native Chat panel, regardless of which model answered (GitHub Copilot, or a BYOK provider extension routed through the same store) |
+| `vscode` | SQLite database at `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db` (`sessions`/`turns` tables) — VS Code's native Chat panel, regardless of which model answered (GitHub Copilot, or a BYOK provider extension routed through the same store). Terminal-notification rows are tagged with a `[terminal-notification] ` marker rather than removed, so transcripts stay unfiltered/unredacted under the handoff's untrusted-data framing |
 
 Handoffs work in either direction: `--from claude --to opencode` and
 `--from opencode --to claude` both work, since `--from` is what selects the

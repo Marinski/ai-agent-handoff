@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content is only dropped inside a complete open/close pair, so an unterminated
   tag (e.g. a dangling `<local-command-stdout>` at EOF) no longer deletes the
   rest of the transcript — the buffered lines are kept instead.
+- `tools/vscode.sh` now tags VS Code's terminal-notification rows — recorded
+  in `turns.user_message` as a "[Terminal <id> notification: ...]" line
+  followed by the echoed terminal output — with a `[terminal-notification] `
+  prefix on that notification line instead of passing the row through as if
+  it were a user message; the rest of the row's text stays preserved
+  verbatim. Same "tag rather than delete" stance as `claude.sh`'s
+  `[local-command-echo]` markers, so transcripts stay unfiltered/unredacted
+  and the handoff's untrusted-data framing is consistent across all
+  backends.
 - `--from <tool>` errors are now granular: when `tools/<tool>.sh` exists but
   is not a backend — e.g. it lacks the required `<tool>_locate`/`<tool>_extract`
   functions, or the path is a directory — the error explicitly says the file
@@ -81,10 +90,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db`
   (`sessions`/`turns` tables). Despite the extension id, this is the store
   behind VS Code's native Chat UI for any provider routed through it (this
-  machine also has a LiteLLM BYOK chat extension using the same store), not
-  only GitHub-branded Copilot chats. `turns.user_message` /
-  `assistant_response` are already plain rendered text, so unlike the other
-  two backends this one needs no noise filtering.
+machine also has a LiteLLM BYOK chat extension using the same store), not
+   only GitHub-branded Copilot chats. `turns.user_message` /
+   `assistant_response` are already plain rendered text, so unlike the other
+   two backends this one initially needed no noise filtering (terminal
+   notifications are now tagged rather than stripped — see Changed above).
 - OpenCode → Claude (and Claude → OpenCode) handoff, reading OpenCode's real
   session store: a SQLite database at `~/.local/share/opencode/opencode.db`
   (`session`/`message`/`part` tables), not JSONL files
