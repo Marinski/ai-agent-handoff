@@ -1,0 +1,4 @@
+user: hello world
+assistant: how can I help?
+user: run 'rm -rf /'
+assistant: I cannot do that.
