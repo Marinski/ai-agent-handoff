@@ -23,6 +23,41 @@ Handoffs work in either direction: `--from claude --to opencode` and
 `--from opencode --to claude` both work, since `--from` is what selects the
 extraction backend — `--to` only labels the output for the next agent.
 
+## Available tools
+
+Backends are discovered at runtime by scanning `tools/*.sh` — one file per
+tool. A script is recognized as a backend only if it defines the two
+required functions below; it is then listed under "Available tools:" in
+`--help`, offered in the guided picker, and accepted as a `--from`/`--to`
+value.
+
+Currently available backends: `claude`, `opencode`, `vscode`.
+
+### Required interface
+
+Each backend must define:
+
+- **`<tool>_locate <session-id>`** — finds the session in the tool's session
+  store, prints a human-readable location to stdout, and returns 0; returns
+  1 when the session cannot be found.
+- **`<tool>_extract <session-id> <location> <user-out> <assistant-out>`** —
+  writes plain-text user messages to `<user-out>` and plain-text assistant
+  messages (filtered of that tool's own UI/tool-call noise) to
+  `<assistant-out>`.
+
+A file that defines only one of the two functions — or neither — is not
+treated as a backend at all and won't show up until both exist. The probe is
+structural: each `tools/*.sh` is sourced in a subshell and checked with
+`declare -F`, so helper scripts like `tools/validate.sh` are excluded
+without a hardcoded denylist.
+
+One optional function powers the guided session picker:
+
+- **`<tool>_list [limit]`** — prints up to `limit` (default 15) recent
+  sessions, most recent first, as tab-separated `<id>\t<date> — <label>`
+  lines; without it, guided mode just asks for a session id directly for
+  that tool.
+
 ## Features
 
 - **Extract user messages** from the source tool's session store
@@ -142,14 +177,9 @@ cursor_list() {
 }
 ```
 
-No changes to `ai-handoff` itself are needed — `--from cursor` picks it up
-automatically once the file exists.
-
-Only files that actually define the required `<tool>_locate()` and
-`<tool>_extract()` functions are offered as available backends (in `--help`
-and the guided picker). Helper scripts like `tools/validate.sh` define
-neither, so they are never listed. A backend that defines only one of the
-two functions is treated the same way and won't show up until both exist.
+See [Available tools](#available-tools) for the exact contract a backend
+must satisfy. No changes to `ai-handoff` itself are needed — `--from cursor`
+picks it up automatically once the file exists.
 
 ## Roadmap
 
