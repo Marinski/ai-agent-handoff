@@ -26,11 +26,13 @@ claude_locate() {
 # because Claude Code indents some of them (e.g. `<command-message>`) but
 # not others inconsistently.
 #
-# `<local-command-*>` boundary markers (`<local-command-caveat>` /
-# `</local-command-caveat>`, `<local-command-stdout>` / `</local-command-stdout>`)
-# are preserved rather than deleted: each matching line is kept with a
-# `[local-command-echo] ` prefix, so a reader of the handoff can still see
-# that a local command ran and where its echo began/ended.
+# `<local-command-*>` boundary markers and `<command-*>` sub-tags
+# (`<local-command-caveat>` / `</local-command-caveat>`,
+# `<local-command-stdout>` / `</local-command-stdout>`, `<command-name>`,
+# `<command-args>`, `<command-message>`) are preserved rather than deleted:
+# each matching line is kept with a `[local-command-echo] ` prefix, so a
+# reader of the handoff can still see that a local command ran, what it was,
+# and where its echo began/ended.
 #
 # `<task-notification>`, `<local-command-stdout>` and `<cu_window_hints>`
 # can span many lines (compaction hook output, JSON dumps), so they are
@@ -104,12 +106,12 @@ claude_strip_noise() {
                 print "[local-command-echo] " $0
                 next
             }
-            if ($0 ~ /^[[:space:]]*<command-name>/) { next }
-            if ($0 ~ /^[[:space:]]*<\/command-name>/) { next }
-            if ($0 ~ /^[[:space:]]*<command-message>/) { next }
-            if ($0 ~ /^[[:space:]]*<\/command-message>/) { next }
-            if ($0 ~ /^[[:space:]]*<command-args>/) { next }
-            if ($0 ~ /^[[:space:]]*<\/command-args>/) { next }
+            if ($0 ~ /^[[:space:]]*<command-name>/) { print "[local-command-echo] " $0; next }
+            if ($0 ~ /^[[:space:]]*<\/command-name>/) { print "[local-command-echo] " $0; next }
+            if ($0 ~ /^[[:space:]]*<command-message>/) { print "[local-command-echo] " $0; next }
+            if ($0 ~ /^[[:space:]]*<\/command-message>/) { print "[local-command-echo] " $0; next }
+            if ($0 ~ /^[[:space:]]*<command-args>/) { print "[local-command-echo] " $0; next }
+            if ($0 ~ /^[[:space:]]*<\/command-args>/) { print "[local-command-echo] " $0; next }
             if ($0 ~ /^[[:space:]]*<!-- attach -->[[:space:]]*$/) { next }
             if ($0 ~ /^[[:space:]]*<tool-use-id>/) { next }
             if ($0 ~ /^[[:space:]]*<\/tool-use-id>/) { next }
@@ -119,8 +121,16 @@ claude_strip_noise() {
             if ($0 ~ /^[[:space:]]*<\/output-file>/) { next }
             if ($0 ~ /^[[:space:]]*<status>/) { next }
             if ($0 ~ /^[[:space:]]*<\/status>/) { next }
-            if ($0 ~ /^monster@.*[$#]$/) { next }
-            if ($0 ~ /^local-command/) { next }
+            if ($0 ~ /^local-command/) {
+                # Legacy plain-text local-command echo lines (e.g.
+                # "local-command plan-mode-diff" or "local-command stdout").
+                # Tag them rather than deleting: they mark where a local
+                # command ran, and the string is far too generic to delete
+                # on sight (a genuine user sentence can legitimately start
+                # with "local-command").
+                print "[local-command-echo] " $0
+                next
+            }
             print
         }
         END {

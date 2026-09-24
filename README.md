@@ -93,6 +93,10 @@ ln -sf "$PWD/ai-agent-handoff/ai-handoff" ~/.local/bin/ai-handoff
 # ~/.local/bin must be on PATH
 ```
 
+Handoff files contain unfiltered transcript text that must be treated as
+untrusted data — read the [Security](#security) note before sharing one with
+any agent, colleague, or repository.
+
 ## Usage
 
 ```bash
