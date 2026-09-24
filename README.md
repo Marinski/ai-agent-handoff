@@ -70,6 +70,15 @@ One optional function powers the guided session picker:
   - Previous agent's final state (last 250 lines of reasoning)
   - Earlier checkpoints and completed work
   - Continuation prompt for the new agent
+- **Nonce-based transcript delimiters**: the `ORIGINAL USER CONTEXT` and
+  `IMPORTANT RECENT USER INSTRUCTIONS` sections are wrapped in
+  `<<<HANDOFF-CONTEXT-BEGIN nonce=…>>>` / `<<<HANDOFF-CONTEXT-END nonce=…>>>`
+  markers carrying a fresh per-run nonce, so the markers can't be confused
+  with marker-shaped text already inside the transcript. Each delimited
+  section is labeled as untrusted historical data rather than instructions,
+  and the header carries a transcript-integrity note stating the transcript
+  is unfiltered/unredacted and may contain content that looks like
+  instructions.
 - **Preserves session state** across token limits and tool switches
 
 ## Installation
@@ -149,6 +158,9 @@ fails with the usage message instead of hanging on a prompt.
    - Previous agent's final state (last 250 lines of reasoning)
    - Earlier checkpoints and completed work
    - Continuation prompt for the new agent
+   - User-transcript sections wrapped in per-run nonce delimiters and marked
+     as untrusted historical data; the header carries a transcript-integrity
+     note
 
 ## Adding a new tool
 

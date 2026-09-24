@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Nonce-based transcript delimiters: the `ORIGINAL USER CONTEXT` and
+  `IMPORTANT RECENT USER INSTRUCTIONS` sections are now wrapped in
+  `<<<HANDOFF-CONTEXT-BEGIN nonce=…>>>` / `<<<HANDOFF-CONTEXT-END nonce=…>>>`
+  markers carrying a fresh per-run nonce, so the markers can't be confused
+  with marker-shaped text already present in the transcript. Each delimited
+  section carries a one-paragraph disclaimer that it is untrusted historical
+  data, not instructions, and the handoff header gains a transcript-integrity
+  note stating the transcript is unfiltered/unredacted and may contain
+  content that looks like instructions.
+
 ### Changed
 - `--from <tool>` errors are now granular: when `tools/<tool>.sh` exists but
   is not a backend — e.g. it lacks the required `<tool>_locate`/`<tool>_extract`
