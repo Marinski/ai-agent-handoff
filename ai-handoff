@@ -280,8 +280,15 @@ fi
 
 SOURCE_SCRIPT="$TOOLS_DIR/${SOURCE_TOOL}.sh"
 if [[ ! -f "$SOURCE_SCRIPT" ]]; then
-    echo "Unsupported source tool: $SOURCE_TOOL" >&2
-    echo "Available: $(available_tools)" >&2
+    if [[ -e "$SOURCE_SCRIPT" ]]; then
+        # The path exists but is not a regular file (a directory or a symlink
+        # to one, say), so "no such file" would be misleading — the path is
+        # there, it just isn't a backend.
+        echo "Unsupported source tool: $SOURCE_TOOL (tools/${SOURCE_TOOL}.sh exists but is not a backend)" >&2
+    else
+        echo "Unsupported source tool: $SOURCE_TOOL" >&2
+        echo "Available: $(available_tools)" >&2
+    fi
     exit 1
 fi
 # shellcheck source=/dev/null
@@ -290,7 +297,8 @@ source "$SOURCE_SCRIPT"
 LOCATE_FN="${SOURCE_TOOL}_locate"
 EXTRACT_FN="${SOURCE_TOOL}_extract"
 if ! declare -F "$LOCATE_FN" >/dev/null || ! declare -F "$EXTRACT_FN" >/dev/null; then
-    echo "tools/${SOURCE_TOOL}.sh must define ${LOCATE_FN}() and ${EXTRACT_FN}()" >&2
+    echo "tools/${SOURCE_TOOL}.sh exists but is not a backend:" >&2
+    echo "  It must define ${LOCATE_FN}() and ${EXTRACT_FN}()." >&2
     exit 1
 fi
 

@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- `--from <tool>` errors are now granular: when `tools/<tool>.sh` exists but
+  is not a backend — e.g. it lacks the required `<tool>_locate`/`<tool>_extract`
+  functions, or the path is a directory — the error explicitly says the file
+  "exists but is not a backend", instead of looking like a "no such file"
+  problem. A genuinely missing file still reports `Unsupported source tool`
+  with the available tools listed.
 - Backend discovery no longer hardcodes `validate.sh` as the one helper to
   skip. `available_tools_arr` now probes each `tools/*.sh` file in a subshell
   and only lists it as a backend if it defines the required `<tool>_locate`
