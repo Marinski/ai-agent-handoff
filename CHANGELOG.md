@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   content that looks like instructions.
 
 ### Changed
+- `tools/claude.sh`'s noise filter now preserves `<local-command-*>` boundary
+  markers (<local-command-caveat>, <local-command-stdout> and their closers)
+  instead of deleting them, prefixing each with `[local-command-echo] ` so a
+  handoff reader still sees that a local command ran. Range deletion is also
+  capped: `<task-notification>`, `<local-command-stdout>` and `<cu_window_hints>`
+  content is only dropped inside a complete open/close pair, so an unterminated
+  tag (e.g. a dangling `<local-command-stdout>` at EOF) no longer deletes the
+  rest of the transcript — the buffered lines are kept instead.
 - `--from <tool>` errors are now granular: when `tools/<tool>.sh` exists but
   is not a backend — e.g. it lacks the required `<tool>_locate`/`<tool>_extract`
   functions, or the path is a directory — the error explicitly says the file
