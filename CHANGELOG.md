@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Backend discovery no longer hardcodes `validate.sh` as the one helper to
+  skip. `available_tools_arr` now probes each `tools/*.sh` file in a subshell
+  and only lists it as a backend if it defines the required `<tool>_locate`
+  and `<tool>_extract` functions, so helper scripts and incomplete backends
+  are excluded structurally rather than by name.
 - The closing "first prompt" block now includes the handoff file's absolute
   path, so it's directly copy-pasteable into the target tool without also
   having to scroll up and copy the path from the "Handoff:" line separately.

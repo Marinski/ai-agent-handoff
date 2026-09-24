@@ -145,6 +145,12 @@ cursor_list() {
 No changes to `ai-handoff` itself are needed — `--from cursor` picks it up
 automatically once the file exists.
 
+Only files that actually define the required `<tool>_locate()` and
+`<tool>_extract()` functions are offered as available backends (in `--help`
+and the guided picker). Helper scripts like `tools/validate.sh` define
+neither, so they are never listed. A backend that defines only one of the
+two functions is treated the same way and won't show up until both exist.
+
 ## Roadmap
 
 - [x] Configurable source/target tool profiles (`tools/*.sh`)

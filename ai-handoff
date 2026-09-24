@@ -46,11 +46,21 @@ TOOLS_DIR="$SCRIPT_DIR/tools"
 source "$TOOLS_DIR/validate.sh"
 
 available_tools_arr() {
-    local f
+    local f tool
     for f in "$TOOLS_DIR"/*.sh; do
-        # Helper scripts like validate.sh are not tool backends.
-        [[ "$f" == */validate.sh ]] && continue
-        [[ -e "$f" ]] && basename "$f" .sh
+        [[ -e "$f" ]] || continue
+        tool="$(basename "$f" .sh)"
+        # A file counts as a backend only if it defines the required
+        # <tool>_locate() and <tool>_extract() functions. Source it in a
+        # subshell and probe with declare -F, so helper scripts (validate.sh
+        # defines validate_tool_name/validate_session_id, not the *_locate /
+        # *_extract pair) and incomplete backends are never listed, without
+        # a hardcoded denylist.
+        (
+            source "$f" >/dev/null 2>&1 \
+                && declare -F "${tool}_locate" >/dev/null \
+                && declare -F "${tool}_extract" >/dev/null
+        ) && printf '%s\n' "$tool"
     done
 }
 
