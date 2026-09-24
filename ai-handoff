@@ -170,14 +170,25 @@ POSITIONAL=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --from) SOURCE_TOOL="${2:?--from needs a value}"; FROM_GIVEN=true; validate_tool_name "$SOURCE_TOOL" || exit 1; shift 2 ;;
-        --to)   TARGET_TOOL="${2:?--to needs a value}"; TO_GIVEN=true; validate_tool_name "$TARGET_TOOL" || exit 1; shift 2 ;;
+        --from) SOURCE_TOOL="${2:?--from needs a value}"; FROM_GIVEN=true; shift 2 ;;
+        --to)   TARGET_TOOL="${2:?--to needs a value}"; TO_GIVEN=true; shift 2 ;;
         --out)  OUTPUT_DIR="${2:?--out needs a value}"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         --*) echo "Unknown flag: $1" >&2; usage; exit 1 ;;
         *) POSITIONAL+=("$1"); shift ;;
     esac
 done
+
+# Validate explicitly given tool names in the main flow once parsing is
+# complete, so a malformed --from/--to aborts with a clear error before any
+# backend work. Guided-mode picks come from available_tools_arr and are
+# always valid names, so only CLI-provided values are checked here.
+if $FROM_GIVEN; then
+    validate_tool_name "$SOURCE_TOOL" || exit 1
+fi
+if $TO_GIVEN; then
+    validate_tool_name "$TARGET_TOOL" || exit 1
+fi
 
 SESSION_ID="${POSITIONAL[0]:-}"
 validate_session_id "$SESSION_ID"
