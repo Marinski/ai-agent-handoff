@@ -23,6 +23,11 @@ Handoffs work in either direction: `--from claude --to opencode` and
 `--from opencode --to claude` both work, since `--from` is what selects the
 extraction backend — `--to` only labels the output for the next agent.
 
+For `claude`, both the local UUID (the `<session-id>.jsonl` filename, and the
+id shown in the guided picker) and the `session_...` bridge id that Claude
+Desktop / claude.ai code URLs use are accepted; a bridge id is resolved to
+its local UUID automatically.
+
 ## Features
 
 - **Extract user messages** from the source tool's session store

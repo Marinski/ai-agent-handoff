@@ -27,6 +27,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   just fails with the usage message, never hangs on a prompt.
 
 ### Fixed
+- `tools/claude.sh` only matched session ids by their on-disk JSONL filename
+  (the local `<uuid>.jsonl` under `~/.claude/projects/**`), but Claude
+  Desktop and claude.ai/code surface a different id to the user — the
+  `session_...` "bridge" id in shareable URLs — so pasting that id failed
+  with `Session not found` even for a session sitting right there on disk.
+  `claude_locate` now translates a `session_...` id to its local UUID via
+  the `.bridgeSessionId` -> `.sessionId` mapping in
+  `~/.claude/sessions/<pid>.json` before looking up the file. Plain UUIDs
+  still work unchanged, and an unknown id still fails as before.
 - `tools/claude.sh`'s noise filter (task notifications, command echoes,
   tool-call metadata) was only ever applied to assistant messages, never to
   user messages — but task notifications and command echoes are recorded as

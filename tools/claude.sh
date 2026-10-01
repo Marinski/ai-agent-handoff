@@ -5,10 +5,28 @@
 # one JSON object per line, with `.type` of "user" or "assistant" and
 # `.message.content` holding either a plain string or an array of parts.
 
+# Claude Desktop/web expose a session to the UI as a "session_..." bridge id
+# (the value in claude.ai/code URLs), which is NOT the on-disk UUID. The
+# mapping lives in ~/.claude/sessions/<pid>.json as .bridgeSessionId ->
+# .sessionId. Translate a bridge id to its local UUID so pasted web ids work.
+# A bridge id can appear in more than one file (same session, several pids);
+# they all point at the same UUID, so the first match is fine.
+claude_bridge_to_uuid() {
+    jq -s -r --arg b "$1" \
+        'map(select(.bridgeSessionId == $b)) | .[0].sessionId // empty' \
+        "$HOME"/.claude/sessions/*.json 2>/dev/null || true
+}
+
 claude_locate() {
     local session_id="$1"
-    local target="${session_id}.jsonl"
-    local file
+    local target file uuid
+
+    if [[ "$session_id" == session_* ]]; then
+        uuid="$(claude_bridge_to_uuid "$session_id")"
+        [[ -n "$uuid" ]] && session_id="$uuid"
+    fi
+
+    target="${session_id}.jsonl"
     while IFS= read -r file; do
         [[ "$(basename "$file")" == "$target" ]] && {
             printf '%s\n' "$file"
