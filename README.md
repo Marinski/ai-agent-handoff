@@ -18,6 +18,7 @@ from.
 | `claude` | JSONL files under `~/.claude/projects/**/<session-id>.jsonl` |
 | `opencode` | SQLite database at `~/.local/share/opencode/opencode.db` (`session`/`message`/`part` tables) |
 | `vscode` | SQLite database at `~/.vscode-server/data/User/globalStorage/github.copilot-chat/session-store.db` (`sessions`/`turns` tables) — VS Code's native Chat panel, regardless of which model answered (GitHub Copilot, or a BYOK provider extension routed through the same store) |
+| `pi` | JSONL files under `~/.pi/agent/sessions/**/<timestamp>_<session-id>.jsonl` (one JSON object per line; `type: message` lines with a `user`/`assistant` role) |
 
 Handoffs work in either direction: `--from claude --to opencode` and
 `--from opencode --to claude` both work, since `--from` is what selects the
@@ -70,6 +71,7 @@ ai-handoff <session-id> --out /path/to/output
 # Explicit source/target tool, either direction:
 ai-handoff <session-id> --from claude --to opencode
 ai-handoff ses_fcbbc786dffeRHepIt5tP1lDVH --from opencode --to claude
+ai-handoff 01a1354e-f031-71e6-a9fa-c4557ca0248c --from pi --to claude
 ```
 
 **Output**: `ai-handoff-<session-id>.md` in the current directory (or specified path)
@@ -87,16 +89,18 @@ Migrate from which tool?
   1) claude
   2) opencode
   3) vscode
+  4) pi
 > 3
 Which vscode session?
   1) 2026-08-03 11:38 — Flip `VISION_ENABLED=true` so the planner "sees" ... (id: 875e11af-...)
   2) 2026-07-30 21:50 — now we're talking, what model do you use (id: ddeda835-...)
-  m) enter a session ID manually
+  (or paste a session ID directly)
 > 2
 Migrate to which tool?
   1) claude
   2) opencode
   3) vscode
+  4) pi
 > 1
 ```
 
@@ -155,6 +159,7 @@ automatically once the file exists.
 - [x] Configurable source/target tool profiles (`tools/*.sh`)
 - [x] Support for OpenCode → Claude hand-offs
 - [x] Support for VS Code (GitHub Copilot Chat / BYOK Chat panel) sessions
+- [x] Support for pi coding-agent sessions (`~/.pi/agent/sessions`)
 - [x] Guided picker — no need to already know the session id
 - [ ] JSON export format for programmatic use
 - [ ] Integration with additional AI assistant platforms (Cursor, Windsurf, ...)

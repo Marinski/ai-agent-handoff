@@ -123,19 +123,23 @@ prompt_session() {
     for i in "${!labels[@]}"; do
         printf '  %d) %s (id: %s)\n' "$((i+1))" "${labels[$i]}" "${ids[$i]}" >&2
     done
-    printf '  m) enter a session ID manually\n' >&2
+    printf '  (or paste a session ID directly)\n' >&2
     while true; do
         read -rp "> " choice || { echo "Aborted." >&2; exit 1; }
-        if [[ "$choice" == "m" ]]; then
-            read -rp "Session ID: " choice
-            [[ -n "$choice" ]] && { printf '%s\n' "$choice"; return 0; }
+        if [[ -z "$choice" ]]; then
+            echo "Enter a number from 1-${#ids[@]}, or a session ID." >&2
             continue
         fi
-        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#ids[@]} )); then
-            printf '%s\n' "${ids[$((choice-1))]}"
-            return 0
+        if [[ "$choice" =~ ^[0-9]+$ ]]; then
+            if (( choice >= 1 && choice <= ${#ids[@]} )); then
+                printf '%s\n' "${ids[$((choice-1))]}"
+                return 0
+            fi
+            echo "Enter a number from 1-${#ids[@]}, or a session ID." >&2
+            continue
         fi
-        echo "Enter a number from 1-${#ids[@]}, or 'm'." >&2
+        printf '%s\n' "$choice"
+        return 0
     done
 }
 

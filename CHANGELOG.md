@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Guided session picker no longer needs the `m` step to enter a session id
+  by hand. At the "Which <tool> session?" prompt a pasted id is now accepted
+  straight away; typing a non-numeric value is taken as the id, while a
+  number is still read as a menu choice. Out-of-range numbers and a blank
+  line re-prompt instead of being mistaken for an id. Shared by every
+  backend, so it applies to claude, opencode, vscode and pi alike.
 - The closing "first prompt" block now includes the handoff file's absolute
   path, so it's directly copy-pasteable into the target tool without also
   having to scroll up and copy the path from the "Handoff:" line separately.
@@ -15,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   this is correct even when `--out` was a relative path.
 
 ### Added
+- `tools/pi.sh`: a fourth backend for the pi coding agent, reading sessions
+  from `~/.pi/agent/sessions/<slugified-cwd>/<timestamp>_<session-id>.jsonl`
+  (one JSON object per line). Only the `text` parts of `user`/`assistant`
+  messages are kept; `thinking`, `toolCall`, `toolResult` and the system
+  preamble are dropped. Locates a session by its id (matched against the
+  filename suffix or the `id` in the session header line), and lists recent
+  sessions labeled with cwd and first user message. With the backend in
+  place, pi works as both a `--from` source and a `--to` target, and appears
+  in the guided picker alongside the other tools.
 - Guided mode: running `ai-handoff` with no session id from a terminal walks
   through picking a source tool, a session from that tool's recent sessions
   (numbered, dated, labeled with title/summary/first message — not just a
